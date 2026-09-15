@@ -36,8 +36,8 @@ services:
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
       - key: STRIPE_CONNECT_PRICE_ID
-        value: price_mock_connect_14
+        sync: false
       - key: STRIPE_ANNUAL_PRICE_ID
-        value: price_mock_annual_99
+        sync: false
       - key: MEDIA_CDN_URL
         value: https://images.unsplash.com
