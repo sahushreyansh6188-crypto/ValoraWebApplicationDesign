@@ -1,0 +1,115 @@
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --font-display: 'Instrument Serif', Georgia, serif;
+  --font-sans: 'Outfit', system-ui, sans-serif;
+
+  --color-brand:        #2A4A1E;
+  --color-brand-hover:  #1F3716;
+  --color-brand-light:  #EEF4EB;
+  --color-brand-mid:    #8FA882;
+
+  --color-clay:         #9B7B52;
+  --color-clay-light:   #F5EDE3;
+  --color-clay-mid:     #C4A882;
+
+  --color-ivory:        #F8F7F4;
+  --color-cream:        #F0EDE5;
+  --color-mist:         #E4E0D8;
+  --color-pebble:       #CCC7BC;
+  --color-stone:        #8A8A82;
+  --color-flint:        #3D3D38;
+  --color-charcoal:     #1A1A18;
+
+  --color-danger:       #B84336;
+  --color-danger-light: #FAEAE8;
+  --color-success:      #2A4A1E;
+  --color-warning:      #9B7B52;
+  --color-info:         #2E5B8A;
+  --color-info-light:   #E8F0F8;
+}
+
+html {
+  font-family: 'Outfit', system-ui, sans-serif;
+  background-color: #F8F7F4;
+  color: #1A1A18;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+.font-display {
+  font-family: 'Instrument Serif', Georgia, serif;
+}
+
+/* Scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #E4E0D8 transparent;
+}
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #E4E0D8; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #8A8A82; }
+
+/* Hide scrollbar visually while keeping scroll functionality */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar { display: none; }
+
+/* iOS safe-area inset for bottom nav */
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0px);
+}
+.pb-safe-4 {
+  padding-bottom: max(calc(env(safe-area-inset-bottom) + 0.5rem), 0.5rem);
+}
+
+/* Hero entrance animations — subtle, editorial */
+@keyframes heroImgReveal {
+  from { transform: scale(1.04); }
+  to   { transform: scale(1); }
+}
+@keyframes heroTextReveal {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.hero-img-anim {
+  animation: heroImgReveal 2.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+.hero-text-anim {
+  animation: heroTextReveal 1s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.35s both;
+}
+/* Secondary CTA arrow hover nudge */
+.hero-arrow { transition: transform 200ms ease; }
+.hero-cta-ghost:hover .hero-arrow { transform: translateX(3px); }
+
+/* Focus ring — brand green */
+:focus-visible {
+  outline: 2px solid #2A4A1E;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Remove default button outline in favour of :focus-visible */
+button:focus { outline: none; }
+
+/* Smooth image load placeholder */
+img { background-color: #F0EDE5; }
+
+/* Hero image responsive object-position:
+   On mobile portrait the landscape PNG is heavily cropped horizontally;
+   shifting X to 65% keeps the V mark roughly centred rather than the far-right
+   edge dominating a narrow viewport. */
+.hero-img-pos { object-position: 100% 0%; }
+@media (max-width: 767px) {
+  .hero-img-pos { object-position: 65% 0%; }
+}

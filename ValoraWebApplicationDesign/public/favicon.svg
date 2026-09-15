@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 114" fill="none">
+  <!--
+    Valora — Option 5 brand mark
+    Two tapered forms converging to a single bottom point.
+    Communicates alignment, compatibility, individuality, and harmony.
+    Forest green on transparent — works on light system chrome.
+    At 16×16 each arm is ~4 px wide — renders clearly.
+  -->
+  <path d="M 7 4 C 1 46, 16 88, 50 110 C 44 88, 36 30, 36 4 Z" fill="#2A4A1E"/>
+  <path d="M 93 4 C 99 46, 84 88, 50 110 C 56 88, 64 30, 64 4 Z" fill="#2A4A1E"/>
+</svg>

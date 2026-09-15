@@ -1,0 +1,269 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "binary"
+}
+
+model User {
+  id              String         @id @default(uuid())
+  email           String         @unique
+  passwordHash    String?
+  role            String         @default("user") // "user" | "moderator" | "admin"
+  accountStatus   String         @default("pending") // "pending" | "active" | "suspended" | "banned" | "deleted"
+  isVerified      Boolean        @default(false)
+  termsAcceptedAt DateTime       @default(now())
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  profile         Profile?
+  preferences     UserPreference?
+  settings        UserSetting?
+  subscription    Subscription?
+
+  sentConnections     ConnectionRequest[] @relation("SentConnections")
+  receivedConnections ConnectionRequest[] @relation("ReceivedConnections")
+
+  matchesAsUser1  Match[]        @relation("MatchUser1")
+  matchesAsUser2  Match[]        @relation("MatchUser2")
+
+  conversationsAsUser1 Conversation[] @relation("ConversationUser1")
+  conversationsAsUser2 Conversation[] @relation("ConversationUser2")
+
+  sentMessages    Message[]      @relation("SentMessages")
+  notifications   Notification[]
+  
+  blockedUsers    Block[]        @relation("Blocker")
+  blockedByUsers  Block[]        @relation("Blocked")
+
+  reportsFiled    Report[]       @relation("Reporter")
+  reportsReceived Report[]       @relation("ReportedUser")
+  assignedReports Report[]       @relation("AssignedModerator")
+
+  auditLogs       AuditLog[]     @relation("AuditActor")
+
+  @@index([accountStatus])
+}
+
+model Profile {
+  id             String         @id @default(uuid())
+  userId         String         @unique
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
+  age            Int
+  pronouns       String?
+  location       String
+  latitude       Float?         @default(45.5152)
+  longitude      Float?         @default(-122.6784)
+  occupation     String?
+  bio            String?
+  lookingFor     String?        @default("A meaningful, long-term relationship")
+  avatarUrl      String?
+  coverUrl       String?
+  isPublished    Boolean        @default(false)
+  isPaused       Boolean        @default(false)
+  lastActiveAt   DateTime       @default(now())
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  photos         ProfilePhoto[]
+  attributes     ProfileAttribute[]
+  notifications  Notification[] @relation("RelatedProfile")
+
+  @@index([isPublished, isPaused])
+  @@index([location])
+}
+
+model ProfilePhoto {
+  id           String   @id @default(uuid())
+  profileId    String
+  profile      Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  photoUrl     String
+  displayOrder Int      @default(0)
+  isPrimary    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([profileId])
+}
+
+model ProfileAttribute {
+  id           String   @id @default(uuid())
+  profileId    String
+  profile      Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  category     String   // "lifestyle" | "value" | "communication" | "boundary"
+  attributeKey String
+
+  @@unique([profileId, category, attributeKey])
+  @@index([category, attributeKey])
+}
+
+model UserPreference {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ageMin          Int      @default(25)
+  ageMax          Int      @default(45)
+  distanceMiles   Int      @default(50)
+  lifestyleFilters String[] @default([])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model UserSetting {
+  id                   String   @id @default(uuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notifyMatches        Boolean  @default(true)
+  notifyMessages       Boolean  @default(true)
+  notifySystem         Boolean  @default(false)
+  privacyShowLastActive Boolean  @default(true)
+  privacyShowLocation   Boolean  @default(true)
+  updatedAt            DateTime @updatedAt
+}
+
+model ConnectionRequest {
+  id         String   @id @default(uuid())
+  senderId   String
+  sender     User     @relation("SentConnections", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId String
+  receiver   User     @relation("ReceivedConnections", fields: [receiverId], references: [id], onDelete: Cascade)
+  status     String   @default("pending") // "pending" | "accepted" | "passed"
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([senderId, receiverId])
+  @@index([receiverId, status])
+}
+
+model Match {
+  id                 String        @id @default(uuid())
+  user1Id            String
+  user1              User          @relation("MatchUser1", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2Id            String
+  user2              User          @relation("MatchUser2", fields: [user2Id], references: [id], onDelete: Cascade)
+  compatibilityScore Int           @default(80)
+  matchedAt          DateTime      @default(now())
+  isActive           Boolean       @default(true)
+
+  conversation       Conversation?
+
+  @@unique([user1Id, user2Id])
+  @@index([user2Id])
+}
+
+model Conversation {
+  id            String    @id @default(uuid())
+  matchId       String    @unique
+  match         Match     @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  user1Id       String
+  user1         User      @relation("ConversationUser1", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2Id       String
+  user2         User      @relation("ConversationUser2", fields: [user2Id], references: [id], onDelete: Cascade)
+  lastMessageAt DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+
+  messages      Message[]
+
+  @@index([user1Id])
+  @@index([user2Id])
+  @@index([lastMessageAt])
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User         @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  text           String
+  read           Boolean      @default(false)
+  readAt         DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+}
+
+model Notification {
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type             String   // "match" | "message" | "system"
+  text             String
+  read             Boolean  @default(false)
+  relatedProfileId String?
+  relatedProfile   Profile? @relation("RelatedProfile", fields: [relatedProfileId], references: [id], onDelete: SetNull)
+  createdAt        DateTime @default(now())
+
+  @@index([userId, read, createdAt])
+  @@index([relatedProfileId])
+}
+
+model Block {
+  id        String   @id @default(uuid())
+  blockerId String
+  blocker   User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedId String
+  blocked   User     @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
+}
+
+model Report {
+  id                  String    @id @default(uuid())
+  reporterId          String?
+  reporter            User?     @relation("Reporter", fields: [reporterId], references: [id], onDelete: SetNull)
+  reportedId          String
+  reportedUser        User      @relation("ReportedUser", fields: [reportedId], references: [id], onDelete: Cascade)
+  reason              String
+  description         String?
+  severity            String    @default("medium") // "low" | "medium" | "high"
+  status              String    @default("open")   // "open" | "under review" | "resolved" | "dismissed"
+  assignedModeratorId String?
+  assignedModerator   User?     @relation("AssignedModerator", fields: [assignedModeratorId], references: [id], onDelete: SetNull)
+  resolvedAt          DateTime?
+  resolutionNotes     String?
+  createdAt           DateTime  @default(now())
+
+  @@index([status, severity])
+  @@index([reportedId])
+  @@index([reporterId])
+  @@index([assignedModeratorId])
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  actorId      String?
+  actor        User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  actorName    String
+  action       String
+  targetEntity String
+  targetId     String?
+  metadata     String?  // JSON string
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([action])
+  @@index([actorId])
+}
+
+model Subscription {
+  id                   String    @id @default(uuid())
+  userId               String    @unique
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan                 String    @default("free") // "free" | "connect" | "annual"
+  status               String    @default("active") // "active" | "past_due" | "canceled"
+  stripeCustomerId     String?   @unique
+  stripeSubscriptionId String?   @unique
+  currentPeriodEnd     DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([plan, status])
+}
