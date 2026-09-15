@@ -7,8 +7,19 @@ import {
   notifications as mockNotifications,
 } from "../data/mock";
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) || "http://localhost:8080/api/v1";
-const WS_BASE = (import.meta.env.VITE_WS_URL as string) || "ws://localhost:8080/ws/chat";
+const rawApiUrl =
+  (import.meta.env.VITE_API_URL as string) ||
+  (import.meta.env.VITE_API_BASE_URL as string) ||
+  "http://localhost:8080";
+
+const API_BASE = rawApiUrl.endsWith("/api/v1")
+  ? rawApiUrl
+  : `${rawApiUrl.replace(/\/$/, "")}/api/v1`;
+
+const defaultWs =
+  rawApiUrl.replace(/^http/, "ws").replace(/\/api\/v1$/, "") + "/ws/chat";
+
+const WS_BASE = (import.meta.env.VITE_WS_URL as string) || defaultWs;
 export const USE_MOCKS = import.meta.env.VITE_USE_MOCKS !== "false";
 
 export interface ApiResponse<T> {

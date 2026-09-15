@@ -39,7 +39,7 @@ export class StorageService {
       // Fallback for development if S3 credentials are mock
       const mockUrl = `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800&h=1000&fit=crop&auto=format`;
       return {
-        uploadUrl: 'http://localhost:8080/api/v1/profiles/photos/mock-upload',
+        uploadUrl: `${env.API_PREFIX}/profiles/photos/mock-upload`,
         finalUrl: mockUrl,
         key,
       };

@@ -50,7 +50,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       path: '/api/v1/auth/refresh',
       httpOnly: true,
       secure: env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: 30 * 24 * 60 * 60,
     });
 
@@ -88,12 +88,12 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       { expiresIn: '30d' }
     );
 
-    // Set HttpOnly refresh token cookie
+    // Set HttpOnly refresh token cookie (SameSite=None + Secure for cross-origin production)
     reply.setCookie('valora_refresh_token', refreshToken, {
       path: '/api/v1/auth/refresh',
       httpOnly: true,
       secure: env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: 30 * 24 * 60 * 60, // 30 days
     });
 
@@ -104,7 +104,11 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.post('/logout', async (request, reply) => {
-    reply.clearCookie('valora_refresh_token', { path: '/api/v1/auth/refresh' });
+    reply.clearCookie('valora_refresh_token', {
+      path: '/api/v1/auth/refresh',
+      secure: env.NODE_ENV === 'production',
+      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
+    });
     return sendSuccess(reply, { message: 'Logged out successfully' });
   });
 

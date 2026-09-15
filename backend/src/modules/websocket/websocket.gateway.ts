@@ -166,6 +166,20 @@ export const websocketGateway: FastifyPluginAsync = async (fastify) => {
       }
     });
   });
+
+  // Graceful teardown hook for all active WebSocket connections on shutdown
+  fastify.addHook('onClose', async () => {
+    for (const sockets of connectedUsers.values()) {
+      for (const ws of sockets) {
+        try {
+          ws.close(1001, 'Server shutting down');
+        } catch {
+          // Ignore close errors during server teardown
+        }
+      }
+    }
+    connectedUsers.clear();
+  });
 };
 
 export default websocketGateway;

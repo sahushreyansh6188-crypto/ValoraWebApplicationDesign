@@ -2,8 +2,23 @@ import { defineConfig, type HtmlTagDescriptor, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
+import fs from 'node:fs'
 
-import siteConfiguration from './.figma/make/site.json'
+let siteConfiguration: FigmaSiteConfiguration = {
+  title: 'VALORA — Values-First Relationship Platform',
+  description: 'A values-first relationship platform for adults seeking intentional connection.',
+  language: 'en',
+}
+
+const rootDir = import.meta.dirname ?? path.resolve('.')
+const siteJsonPath = path.resolve(rootDir, './.figma/make/site.json')
+if (fs.existsSync(siteJsonPath)) {
+  try {
+    siteConfiguration = JSON.parse(fs.readFileSync(siteJsonPath, 'utf-8'))
+  } catch {
+    // Ignore read errors and use defaults
+  }
+}
 
 // Vite config — https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
@@ -26,7 +41,7 @@ export default defineConfig(({ mode }) => {
     ],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, './src'),
+        '@': path.resolve(rootDir, './src'),
       },
     },
     server: {
