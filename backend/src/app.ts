@@ -45,9 +45,17 @@ export function buildApp(): FastifyInstance {
 
   // 3. Health Check
   app.get('/health', async (request, reply) => {
+    let dbStatus = 'connected';
+    try {
+      await app.prisma.$queryRaw`SELECT 1`;
+    } catch (err) {
+      dbStatus = `disconnected: ${(err as Error).message}`;
+    }
+
     return sendSuccess(reply, {
       status: 'healthy',
       service: 'valora-backend',
+      database: dbStatus,
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
     });
@@ -104,14 +112,16 @@ export function buildApp(): FastifyInstance {
     // Log internal unhandled error
     request.log.error(error, 'Unhandled Internal Server Error');
 
-    return sendError(
-      reply,
-      AppError.internal(
-        env.NODE_ENV === 'production'
-          ? 'An internal error occurred'
-          : anyError.message || 'Internal Server Error'
-      )
-    );
+    const rawMessage = anyError?.message || 'Internal Server Error';
+    const isDbError =
+      rawMessage.includes("Can't reach database server") ||
+      rawMessage.includes('P1001') ||
+      rawMessage.includes('DATABASE_URL');
+    const friendlyMessage = isDbError
+      ? 'Database connection failed. Please ensure DATABASE_URL is set in Render Environment Variables.'
+      : rawMessage;
+
+    return sendError(reply, AppError.internal(friendlyMessage));
   });
 
   // 7. Not Found Handler
