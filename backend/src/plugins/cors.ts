@@ -9,15 +9,41 @@ export const corsPlugin: FastifyPluginAsync = async (fastify) => {
     .map((o) => o.trim())
     .filter(Boolean);
 
-  // In production, strictly allow only configured production origins.
-  // In non-production (development/test), permit localhost fallbacks.
-  const allowedOrigins =
-    env.NODE_ENV === 'production'
-      ? configuredOrigins
-      : Array.from(new Set([...configuredOrigins, 'http://localhost:5173', 'http://127.0.0.1:5173']));
+  const defaultProductionOrigins = [
+    'https://valoraconnect.vercel.app',
+    'https://valora-connect.vercel.app',
+  ];
+
+  const allowedOrigins = Array.from(
+    new Set([
+      ...configuredOrigins,
+      ...defaultProductionOrigins,
+      ...(env.NODE_ENV !== 'production' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : []),
+    ])
+  );
 
   await fastify.register(cors, {
-    origin: allowedOrigins.length > 0 ? allowedOrigins : false,
+    origin: (origin, cb) => {
+      // Allow requests with no origin (e.g. mobile apps, curl, health checks)
+      if (!origin) {
+        cb(null, true);
+        return;
+      }
+
+      // Check allowed origins list
+      if (allowedOrigins.includes(origin)) {
+        cb(null, true);
+        return;
+      }
+
+      // Allow any Vercel deployment preview domain for valoraconnect
+      if (/^https:\/\/valoraconnect.*\.vercel\.app$/.test(origin)) {
+        cb(null, true);
+        return;
+      }
+
+      cb(null, false);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
