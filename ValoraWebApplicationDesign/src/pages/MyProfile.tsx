@@ -1,16 +1,42 @@
 import { useState, useEffect } from "react";
-import type { UserProfile } from "../types";
-import { currentUser as mockUser } from "../data/mock";
+import type { NavigateFn, UserProfile } from "../types";
 import { profilesApi } from "../services/api";
 
-export default function MyProfile() {
-  const [profile, setProfile] = useState<UserProfile>(mockUser);
+interface MyProfileProps {
+  navigate?: NavigateFn;
+}
+
+const defaultProfile: UserProfile = {
+  id: "",
+  name: "",
+  age: 28,
+  pronouns: "",
+  location: "",
+  occupation: "",
+  bio: "",
+  photo: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400&h=500&fit=crop&auto=format",
+  photos: ["https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=800&h=1000&fit=crop&auto=format"],
+  lifestyle: [],
+  values: [],
+  communicationStyle: [],
+  boundaries: [],
+  lookingFor: "A meaningful, long-term relationship",
+  compatibilityScore: 100,
+  lastActive: "Today",
+};
+
+export default function MyProfile({ navigate }: MyProfileProps) {
+  const [profile, setProfile] = useState<UserProfile>(defaultProfile);
   const currentUser = profile;
   const [editing, setEditing] = useState(false);
-  const [bio, setBio] = useState(mockUser.bio);
-  const [occupation, setOccupation] = useState(mockUser.occupation);
-  const [savedBio, setSavedBio] = useState(mockUser.bio);
-  const [savedOccupation, setSavedOccupation] = useState(mockUser.occupation);
+  const [bio, setBio] = useState("");
+  const [occupation, setOccupation] = useState("");
+  const [location, setLocation] = useState("");
+  const [pronouns, setPronouns] = useState("");
+  const [savedBio, setSavedBio] = useState("");
+  const [savedOccupation, setSavedOccupation] = useState("");
+  const [savedLocation, setSavedLocation] = useState("");
+  const [savedPronouns, setSavedPronouns] = useState("");
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -18,10 +44,14 @@ export default function MyProfile() {
     profilesApi.getMe().then((data) => {
       if (active && data) {
         setProfile(data);
-        setBio(data.bio);
-        setOccupation(data.occupation);
-        setSavedBio(data.bio);
-        setSavedOccupation(data.occupation);
+        setBio(data.bio || "");
+        setOccupation(data.occupation || "");
+        setLocation(data.location || "");
+        setPronouns(data.pronouns || "");
+        setSavedBio(data.bio || "");
+        setSavedOccupation(data.occupation || "");
+        setSavedLocation(data.location || "");
+        setSavedPronouns(data.pronouns || "");
       }
     }).catch(() => {});
     return () => { active = false; };
@@ -30,10 +60,13 @@ export default function MyProfile() {
   const save = async () => {
     setSavedBio(bio);
     setSavedOccupation(occupation);
+    setSavedLocation(location);
+    setSavedPronouns(pronouns);
+    setProfile((prev) => ({ ...prev, bio, occupation, location, pronouns }));
     setEditing(false);
     setSaved(true);
     try {
-      await profilesApi.updateMe({ bio, occupation });
+      await profilesApi.updateMe({ bio, occupation, location, pronouns });
     } catch (err) {
       console.warn("Failed updating profile via API:", err);
     }
@@ -43,6 +76,8 @@ export default function MyProfile() {
   const cancel = () => {
     setBio(savedBio);
     setOccupation(savedOccupation);
+    setLocation(savedLocation);
+    setPronouns(savedPronouns);
     setEditing(false);
   };
 
@@ -57,19 +92,35 @@ export default function MyProfile() {
   const doneCount = completeness.filter((c) => c.done).length;
   const completePct = Math.round((doneCount / completeness.length) * 100);
 
+  const openOnboarding = () => {
+    if (navigate) {
+      navigate("onboarding");
+    }
+  };
+
   return (
     <div className="md:ml-60 min-h-screen bg-ivory pb-24 md:pb-6">
       {/* Header */}
       <div className="bg-white border-b border-mist px-6 py-4 flex items-center justify-between">
         <h1 className="font-display text-2xl text-charcoal">My Profile</h1>
-        {!editing && (
-          <button
-            onClick={() => setEditing(true)}
-            className="bg-brand-light text-brand text-sm font-medium px-5 py-2 rounded-full hover:bg-brand hover:text-ivory transition-colors"
-          >
-            Edit profile
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {navigate && (
+            <button
+              onClick={openOnboarding}
+              className="text-xs text-brand font-medium hover:underline flex items-center gap-1"
+            >
+              Re-edit questionnaire
+            </button>
+          )}
+          {!editing && (
+            <button
+              onClick={() => setEditing(true)}
+              className="bg-brand-light text-brand text-sm font-medium px-5 py-2 rounded-full hover:bg-brand hover:text-ivory transition-colors"
+            >
+              Edit profile
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="max-w-2xl mx-auto px-6 py-6 space-y-6">
@@ -103,29 +154,13 @@ export default function MyProfile() {
         <div className="bg-white border border-mist rounded-2xl overflow-hidden">
           {/* Cover + avatar */}
           <div className="h-36 bg-gradient-to-br from-brand-light to-cream relative">
-            {editing && (
-              <button className="absolute top-3 right-3 bg-white/80 backdrop-blur-sm text-xs text-flint px-3 py-1.5 rounded-full border border-mist hover:bg-white transition-colors">
-                Change cover
-              </button>
-            )}
             <div className="absolute -bottom-8 left-6">
               <div className="relative">
                 <img
-                  src={currentUser.photo}
+                  src={currentUser.photo || "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400&h=500&fit=crop&auto=format"}
                   alt="Your profile photo"
                   className="w-20 h-20 rounded-full object-cover border-4 border-white"
                 />
-                {editing && (
-                  <button
-                    aria-label="Change profile photo"
-                    className="absolute bottom-0 right-0 w-6 h-6 bg-brand rounded-full flex items-center justify-center border-2 border-white"
-                  >
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                    </svg>
-                  </button>
-                )}
               </div>
             </div>
           </div>
@@ -133,15 +168,44 @@ export default function MyProfile() {
           <div className="pt-12 px-6 pb-6">
             <div className="flex items-start justify-between">
               <div>
-                <h2 className="text-xl font-semibold text-charcoal">{currentUser.name}, {currentUser.age}</h2>
-                <p className="text-sm text-stone">{currentUser.pronouns}</p>
-                <p className="text-xs text-stone flex items-center gap-1 mt-1">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-                    <circle cx="12" cy="10" r="3"/>
-                  </svg>
-                  {currentUser.location}
-                </p>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-semibold text-charcoal">{currentUser.name || "Member"}, {currentUser.age}</h2>
+                  <span className="text-[11px] text-stone bg-sand/40 px-2.5 py-0.5 rounded-full border border-mist flex items-center gap-1">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    Permanent registered name
+                  </span>
+                </div>
+                {editing ? (
+                  <input
+                    type="text"
+                    value={pronouns}
+                    onChange={(e) => setPronouns(e.target.value)}
+                    placeholder="e.g. they/them, she/her"
+                    className="mt-1 px-3 py-1 text-xs rounded-lg bg-ivory border border-mist text-charcoal focus:outline-none focus:border-brand"
+                  />
+                ) : (
+                  <p className="text-sm text-stone">{savedPronouns || "they/them"}</p>
+                )}
+                
+                {editing ? (
+                  <div className="mt-1">
+                    <input
+                      type="text"
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
+                      placeholder="e.g. Portland, OR"
+                      className="px-3 py-1 text-xs rounded-lg bg-ivory border border-mist text-charcoal focus:outline-none focus:border-brand"
+                    />
+                  </div>
+                ) : (
+                  <p className="text-xs text-stone flex items-center gap-1 mt-1">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                      <circle cx="12" cy="10" r="3"/>
+                    </svg>
+                    {savedLocation || "Portland, OR"}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -156,7 +220,7 @@ export default function MyProfile() {
                   className="w-full px-4 py-2.5 rounded-xl text-sm bg-ivory border border-mist text-charcoal focus:outline-none focus:border-brand transition-colors"
                 />
               ) : (
-                <p className="text-sm text-flint">{savedOccupation}</p>
+                <p className="text-sm text-flint">{savedOccupation || "Not specified"}</p>
               )}
             </div>
 
@@ -173,7 +237,7 @@ export default function MyProfile() {
                   className="w-full px-4 py-3 rounded-xl text-sm bg-ivory border border-mist text-charcoal focus:outline-none focus:border-brand transition-colors resize-none"
                 />
               ) : (
-                <p className="text-sm text-flint leading-relaxed">{savedBio}</p>
+                <p className="text-sm text-flint leading-relaxed">{savedBio || "No bio added yet."}</p>
               )}
             </div>
 
@@ -194,7 +258,9 @@ export default function MyProfile() {
         <div className="bg-white border border-mist rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-charcoal">Values</h3>
-            <button className="text-xs text-clay hover:underline">Edit</button>
+            {navigate && (
+              <button onClick={openOnboarding} className="text-xs text-clay hover:underline">Edit</button>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             {currentUser.values.map((v) => (
@@ -207,7 +273,9 @@ export default function MyProfile() {
         <div className="bg-white border border-mist rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-charcoal">Lifestyle</h3>
-            <button className="text-xs text-clay hover:underline">Edit</button>
+            {navigate && (
+              <button onClick={openOnboarding} className="text-xs text-clay hover:underline">Edit</button>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             {currentUser.lifestyle.map((l) => (
@@ -220,7 +288,9 @@ export default function MyProfile() {
         <div className="bg-white border border-mist rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-charcoal">Communication style</h3>
-            <button className="text-xs text-clay hover:underline">Edit</button>
+            {navigate && (
+              <button onClick={openOnboarding} className="text-xs text-clay hover:underline">Edit</button>
+            )}
           </div>
           <div className="space-y-2">
             {currentUser.communicationStyle.map((c) => (
@@ -236,7 +306,9 @@ export default function MyProfile() {
         <div className="bg-white border border-mist rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-charcoal">Boundaries I've shared</h3>
-            <button className="text-xs text-clay hover:underline">Edit</button>
+            {navigate && (
+              <button onClick={openOnboarding} className="text-xs text-clay hover:underline">Edit</button>
+            )}
           </div>
           <div className="space-y-2">
             {currentUser.boundaries.map((b) => (

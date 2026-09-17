@@ -23,24 +23,198 @@ export class ProfilesService {
     return serializeProfile(profile, 100);
   }
 
-  async updateMyProfile(userId: string, data: { bio?: string; occupation?: string }) {
-    const profile = await this.prisma.profile.findUnique({ where: { userId } });
+  async updateMyProfile(
+    userId: string,
+    data: {
+      name?: string;
+      email?: string;
+      bio?: string;
+      occupation?: string;
+      pronouns?: string;
+      location?: string;
+      age?: number;
+      lookingFor?: string;
+      photo?: string;
+      photos?: string[];
+      lifestyle?: string[];
+      values?: string[];
+      communicationStyle?: string[];
+      boundaries?: string[];
+      isPaused?: boolean;
+      ageMin?: number;
+      ageMax?: number;
+      distanceMax?: number;
+      preferences?: {
+        ageMin?: number;
+        ageMax?: number;
+        distanceMiles?: number;
+      };
+    }
+  ) {
+    const profile = await this.prisma.profile.findUnique({
+      where: { userId },
+      include: { attributes: true, photos: true },
+    });
     if (!profile) throw AppError.notFound('Profile not found');
 
-    if (data.bio && data.bio.length > 400) {
-      throw AppError.badRequest('Bio must not exceed 400 characters');
+    // Immutable fields enforcement
+    if (data.name !== undefined && data.name.trim() !== profile.name) {
+      throw AppError.badRequest('Name is an immutable account identifier and cannot be changed after registration.');
+    }
+    if (data.email !== undefined) {
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (user && data.email.toLowerCase().trim() !== user.email.toLowerCase().trim()) {
+        throw AppError.badRequest('Email address is an immutable account identifier and cannot be changed after registration.');
+      }
     }
 
-    const updated = await this.prisma.profile.update({
-      where: { userId },
-      data: {
-        ...(data.bio !== undefined && { bio: data.bio }),
-        ...(data.occupation !== undefined && { occupation: data.occupation }),
-      },
-      include: {
-        photos: { orderBy: { displayOrder: 'asc' } },
-        attributes: true,
-      },
+    if (data.bio !== undefined && data.bio.length > 400) {
+      throw AppError.badRequest('Bio must not exceed 400 characters');
+    }
+    if (data.occupation !== undefined && data.occupation.length > 150) {
+      throw AppError.badRequest('Occupation must not exceed 150 characters');
+    }
+    if (data.age !== undefined && (data.age < 18 || data.age > 120)) {
+      throw AppError.badRequest('Age must be between 18 and 120');
+    }
+
+    const coords = data.location ? resolveCoordinates(data.location) : undefined;
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // 1. Update basic profile fields
+      const updatedProfile = await tx.profile.update({
+        where: { userId },
+        data: {
+          ...(data.bio !== undefined && { bio: data.bio.trim() }),
+          ...(data.occupation !== undefined && { occupation: data.occupation.trim() }),
+          ...(data.pronouns !== undefined && { pronouns: data.pronouns.trim() }),
+          ...(data.location !== undefined && {
+            location: data.location.trim(),
+            latitude: coords?.lat ?? profile.latitude,
+            longitude: coords?.lon ?? profile.longitude,
+          }),
+          ...(data.age !== undefined && { age: data.age }),
+          ...(data.lookingFor !== undefined && { lookingFor: data.lookingFor.trim() }),
+          ...(data.photo !== undefined && { avatarUrl: data.photo }),
+          ...(data.isPaused !== undefined && { isPaused: data.isPaused }),
+        },
+        include: {
+          photos: { orderBy: { displayOrder: 'asc' } },
+          attributes: true,
+        },
+      });
+
+      // 2. Photos update if provided
+      const rawPhotos = [
+        ...(data.photos || []),
+        ...(data.photo && (!data.photos || !data.photos.includes(data.photo)) ? [data.photo] : []),
+      ];
+      if (rawPhotos.length > 0) {
+        await tx.profilePhoto.deleteMany({ where: { profileId: profile.id } });
+        const uniquePhotos = Array.from(new Set(rawPhotos));
+        await tx.profilePhoto.createMany({
+          data: uniquePhotos.map((url, idx) => ({
+            profileId: profile.id,
+            photoUrl: url,
+            isPrimary: idx === 0,
+            displayOrder: idx,
+          })),
+        });
+        await tx.profile.update({
+          where: { id: profile.id },
+          data: { avatarUrl: uniquePhotos[0] },
+        });
+      }
+
+      // 3. Attributes update if provided
+      if (data.lifestyle !== undefined) {
+        await tx.profileAttribute.deleteMany({
+          where: { profileId: profile.id, category: 'lifestyle' },
+        });
+        if (data.lifestyle.length > 0) {
+          await tx.profileAttribute.createMany({
+            data: data.lifestyle.map((l) => ({
+              profileId: profile.id,
+              category: 'lifestyle',
+              attributeKey: l,
+            })),
+          });
+        }
+      }
+
+      if (data.values !== undefined) {
+        await tx.profileAttribute.deleteMany({
+          where: { profileId: profile.id, category: 'value' },
+        });
+        if (data.values.length > 0) {
+          await tx.profileAttribute.createMany({
+            data: data.values.map((v) => ({
+              profileId: profile.id,
+              category: 'value',
+              attributeKey: v,
+            })),
+          });
+        }
+      }
+
+      if (data.communicationStyle !== undefined) {
+        await tx.profileAttribute.deleteMany({
+          where: { profileId: profile.id, category: 'communication' },
+        });
+        if (data.communicationStyle.length > 0) {
+          await tx.profileAttribute.createMany({
+            data: data.communicationStyle.map((c) => ({
+              profileId: profile.id,
+              category: 'communication',
+              attributeKey: c,
+            })),
+          });
+        }
+      }
+
+      if (data.boundaries !== undefined) {
+        await tx.profileAttribute.deleteMany({
+          where: { profileId: profile.id, category: 'boundary' },
+        });
+        if (data.boundaries.length > 0) {
+          await tx.profileAttribute.createMany({
+            data: data.boundaries.map((b) => ({
+              profileId: profile.id,
+              category: 'boundary',
+              attributeKey: b,
+            })),
+          });
+        }
+      }
+
+      // 4. Preferences update if provided
+      const prefAgeMin = data.preferences?.ageMin ?? data.ageMin;
+      const prefAgeMax = data.preferences?.ageMax ?? data.ageMax;
+      const prefDistance = data.preferences?.distanceMiles ?? data.distanceMax;
+      if (prefAgeMin !== undefined || prefAgeMax !== undefined || prefDistance !== undefined) {
+        await tx.userPreference.upsert({
+          where: { userId },
+          update: {
+            ...(prefAgeMin !== undefined && { ageMin: prefAgeMin }),
+            ...(prefAgeMax !== undefined && { ageMax: prefAgeMax }),
+            ...(prefDistance !== undefined && { distanceMiles: prefDistance }),
+          },
+          create: {
+            userId,
+            ageMin: prefAgeMin ?? 25,
+            ageMax: prefAgeMax ?? 45,
+            distanceMiles: prefDistance ?? 50,
+          },
+        });
+      }
+
+      return tx.profile.findUnique({
+        where: { id: profile.id },
+        include: {
+          photos: { orderBy: { displayOrder: 'asc' } },
+          attributes: true,
+        },
+      });
     });
 
     return serializeProfile(updated, 100);
@@ -102,11 +276,18 @@ export class ProfilesService {
         },
       });
 
+      // Check existing profile to preserve registered immutable name
+      const existingProfile = await tx.profile.findUnique({ where: { userId } });
+      if (existingProfile?.name && data.name && data.name.trim() !== existingProfile.name) {
+        throw AppError.badRequest('Name is an immutable account identifier and cannot be changed after registration.');
+      }
+      const finalName = existingProfile?.name || data.name.trim();
+
       // 2. Upsert profile
       const profile = await tx.profile.upsert({
         where: { userId },
         update: {
-          name: data.name.trim(),
+          name: finalName,
           age: data.age,
           pronouns: data.pronouns || '',
           location: data.location.trim(),
@@ -114,12 +295,13 @@ export class ProfilesService {
           longitude: coords.lon,
           occupation: data.occupation?.trim() || '',
           bio: data.bio?.trim() || '',
+          lookingFor: data.lookingFor?.trim() || existingProfile?.lookingFor || 'A meaningful, long-term relationship',
           isPublished: true,
           isPaused: false,
         },
         create: {
           userId,
-          name: data.name.trim(),
+          name: finalName,
           age: data.age,
           pronouns: data.pronouns || '',
           location: data.location.trim(),
@@ -127,6 +309,7 @@ export class ProfilesService {
           longitude: coords.lon,
           occupation: data.occupation?.trim() || '',
           bio: data.bio?.trim() || '',
+          lookingFor: data.lookingFor?.trim() || 'A meaningful, long-term relationship',
           isPublished: true,
           isPaused: false,
         },

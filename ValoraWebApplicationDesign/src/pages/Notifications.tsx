@@ -1,6 +1,5 @@
 import { useState, useEffect, type ReactElement } from "react";
 import type { NavigateFn, Notification } from "../types";
-import { notifications as mockNotifications } from "../data/mock";
 import { notificationsApi } from "../services/api";
 
 interface NotificationsProps {
@@ -34,15 +33,19 @@ const iconBg: Record<string, string> = {
 };
 
 export default function Notifications({ navigate }: NotificationsProps) {
-  const [notifs, setNotifs] = useState<Notification[]>(mockNotifications);
+  const [notifs, setNotifs] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
     notificationsApi.getAll().then((data) => {
-      if (active && data && data.length > 0) {
-        setNotifs(data);
+      if (active) {
+        setNotifs(data || []);
+        setLoading(false);
       }
-    }).catch(() => {});
+    }).catch(() => {
+      if (active) setLoading(false);
+    });
     return () => { active = false; };
   }, []);
 

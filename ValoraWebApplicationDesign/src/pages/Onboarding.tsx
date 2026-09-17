@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import ValoraLogo from "../components/ValoraLogo";
 import { profilesApi } from "../services/api";
 
@@ -177,6 +177,32 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const [ageMax, setAgeMax] = useState(45);
   const [distance, setDistance] = useState(50);
 
+  const [isNameLocked, setIsNameLocked] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    profilesApi.getMe().then((p) => {
+      if (active && p) {
+        if (p.name) {
+          setName(p.name);
+          setIsNameLocked(true);
+        }
+        if (p.age) setAge(String(p.age));
+        if (p.pronouns) setPronouns(p.pronouns);
+        if (p.location) setLocation(p.location);
+        if (p.occupation) setOccupation(p.occupation);
+        if (p.bio) setBio(p.bio);
+        if (p.lifestyle && p.lifestyle.length > 0) setLifestyle(p.lifestyle);
+        if (p.values && p.values.length > 0) setValues(p.values);
+        if (p.communicationStyle && p.communicationStyle.length > 0) setCommStyle(p.communicationStyle);
+        if (p.boundaries && p.boundaries.length > 0) setBoundaries(p.boundaries);
+        setEligible(true);
+      }
+    }).catch(() => {});
+    return () => { active = false; };
+  }, []);
+
   const progress = ((step - 1) / (TOTAL_STEPS - 1)) * 100;
 
   const canAdvance = () => {
@@ -196,6 +222,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       setStep(step + 1);
     } else {
       setSubmitting(true);
+      setSubmitError(null);
       try {
         await profilesApi.submitOnboarding({
           name,
@@ -215,11 +242,11 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           ageMax,
           distanceMax: distance,
         });
-      } catch (err) {
-        console.warn("Onboarding API error (continuing with local flow):", err);
-      } finally {
         setSubmitting(false);
         onComplete();
+      } catch (err) {
+        setSubmitting(false);
+        setSubmitError((err as Error)?.message || "Failed to publish profile to database. Please check your answers.");
       }
     }
   };
@@ -307,15 +334,34 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
               <div>
                 <label className="block text-sm font-medium text-flint mb-1.5" htmlFor="ob-name">
                   What should we call you? <span className="text-danger" aria-hidden="true">*</span>
+                  {isNameLocked && (
+                    <span className="text-xs text-stone font-normal ml-2">(Immutable registered name)</span>
+                  )}
                 </label>
-                <input
-                  id="ob-name"
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Your name or chosen name"
-                  className="w-full px-4 py-3 rounded-xl text-sm bg-white border border-mist text-charcoal placeholder-stone focus:outline-none focus:border-brand transition-colors"
-                />
+                <div className="relative">
+                  <input
+                    id="ob-name"
+                    type="text"
+                    value={name}
+                    onChange={(e) => !isNameLocked && setName(e.target.value)}
+                    placeholder="Your name or chosen name"
+                    readOnly={isNameLocked}
+                    className={`w-full px-4 py-3 rounded-xl text-sm border border-mist text-charcoal placeholder-stone focus:outline-none transition-colors ${
+                      isNameLocked
+                        ? "bg-pebble/30 cursor-not-allowed text-charcoal font-medium pr-24"
+                        : "bg-white focus:border-brand"
+                    }`}
+                  />
+                  {isNameLocked && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-stone text-xs flex items-center gap-1 bg-white/90 px-2.5 py-1 rounded-full border border-mist">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                      Permanent
+                    </div>
+                  )}
+                </div>
+                {isNameLocked && (
+                  <p className="text-[11px] text-stone mt-1.5">Registered names cannot be altered to protect trust and authenticity.</p>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -527,6 +573,14 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                   )}
                 </div>
               </div>
+              {submitError && (
+                <div role="alert" className="bg-danger/10 border border-danger/30 rounded-xl p-4 text-xs text-danger flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                    <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm-.75 3.5h1.5v5h-1.5v-5zm0 6.5h1.5v1.5h-1.5V11z"/>
+                  </svg>
+                  <span>{submitError}</span>
+                </div>
+              )}
               <div className="bg-brand-light rounded-xl p-4">
                 <p className="text-sm text-brand font-medium mb-1">Your profile is ready to publish</p>
                 <p className="text-xs text-stone">You can edit any of this later from your profile settings. Your profile won't be visible until you publish it.</p>

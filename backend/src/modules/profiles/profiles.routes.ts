@@ -5,8 +5,31 @@ import { authenticate } from '../../middleware/authenticate.js';
 import { sendSuccess } from '../../utils/response.js';
 
 const updateProfileSchema = z.object({
+  name: z.string().optional(),
+  email: z.string().optional(),
   bio: z.string().max(400).optional(),
   occupation: z.string().max(150).optional(),
+  pronouns: z.string().optional(),
+  location: z.string().optional(),
+  age: z.number().int().min(18).max(120).optional(),
+  lookingFor: z.string().optional(),
+  photo: z.string().optional(),
+  photos: z.array(z.string()).optional(),
+  lifestyle: z.array(z.string()).optional(),
+  values: z.array(z.string()).optional(),
+  communicationStyle: z.array(z.string()).optional(),
+  boundaries: z.array(z.string()).optional(),
+  isPaused: z.boolean().optional(),
+  ageMin: z.number().optional(),
+  ageMax: z.number().optional(),
+  distanceMax: z.number().optional(),
+  preferences: z
+    .object({
+      ageMin: z.number().optional(),
+      ageMax: z.number().optional(),
+      distanceMiles: z.number().optional(),
+    })
+    .optional(),
 });
 
 const onboardingSchema = z.object({
@@ -39,22 +62,31 @@ const onboardingSchema = z.object({
 export const profilesRoutes: FastifyPluginAsync = async (fastify) => {
   const profilesService = new ProfilesService(fastify.prisma);
 
-  fastify.get('/me', { preHandler: [authenticate] }, async (request, reply) => {
+  const handleGetMyProfile = async (request: any, reply: any) => {
     const profile = await profilesService.getMyProfile(request.user!.sub);
     return sendSuccess(reply, profile);
-  });
+  };
+  fastify.get('/me', { preHandler: [authenticate] }, handleGetMyProfile);
+  fastify.get('/', { preHandler: [authenticate] }, handleGetMyProfile);
 
-  fastify.patch('/me', { preHandler: [authenticate] }, async (request, reply) => {
+  const handleUpdateMyProfile = async (request: any, reply: any) => {
     const body = updateProfileSchema.parse(request.body);
     const updated = await profilesService.updateMyProfile(request.user!.sub, body);
     return sendSuccess(reply, updated);
-  });
+  };
+  fastify.patch('/me', { preHandler: [authenticate] }, handleUpdateMyProfile);
+  fastify.patch('/', { preHandler: [authenticate] }, handleUpdateMyProfile);
+  fastify.put('/me', { preHandler: [authenticate] }, handleUpdateMyProfile);
+  fastify.put('/', { preHandler: [authenticate] }, handleUpdateMyProfile);
 
-  fastify.post('/onboarding', { preHandler: [authenticate] }, async (request, reply) => {
+  const handleSubmitOnboarding = async (request: any, reply: any) => {
     const body = onboardingSchema.parse(request.body);
     const profile = await profilesService.submitOnboarding(request.user!.sub, body);
     return sendSuccess(reply, profile, 200);
-  });
+  };
+  fastify.post('/onboarding', { preHandler: [authenticate] }, handleSubmitOnboarding);
+  fastify.put('/onboarding', { preHandler: [authenticate] }, handleSubmitOnboarding);
+  fastify.patch('/onboarding', { preHandler: [authenticate] }, handleSubmitOnboarding);
 
   fastify.post('/photos/upload-url', { preHandler: [authenticate] }, async (request, reply) => {
     const { fileName, fileType } = z

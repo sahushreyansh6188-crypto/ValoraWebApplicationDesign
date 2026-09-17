@@ -148,6 +148,7 @@ function SignUpForm({ onLogin, switchTo }: { onLogin: () => void; switchTo: (m: 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [agreed, setAgreed] = useState(false);
+  const [confirmedImmutable, setConfirmedImmutable] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
@@ -159,6 +160,7 @@ function SignUpForm({ onLogin, switchTo }: { onLogin: () => void; switchTo: (m: 
     if (!password) e.password = "Password is required";
     else if (password.length < 8) e.password = "Must be at least 8 characters";
     if (!agreed) e.agreed = "You must agree to continue";
+    if (!confirmedImmutable) e.confirmedImmutable = "Please acknowledge that your name and email cannot be changed later";
     return e;
   };
 
@@ -213,6 +215,32 @@ function SignUpForm({ onLogin, switchTo }: { onLogin: () => void; switchTo: (m: 
         </label>
         {errors.agreed && <p id="agreed-error" role="alert" className="text-danger text-xs mt-1">{errors.agreed}</p>}
       </div>
+      {/* Immutability warning */}
+      <div className="bg-sand/40 border border-mist rounded-xl p-3.5 text-xs text-flint flex items-start gap-2.5">
+        <svg className="w-4 h-4 text-clay shrink-0 mt-0.5" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm-.75 3.5h1.5v5h-1.5v-5zm0 6.5h1.5v1.5h-1.5V11z"/>
+        </svg>
+        <p className="leading-relaxed">
+          <strong className="text-charcoal font-medium">Permanent Account Identifiers:</strong> Please check your name and email carefully. Your name and email address are used as your permanent account identifiers and cannot be changed after registration.
+        </p>
+      </div>
+
+      <div>
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={confirmedImmutable}
+            onChange={(e) => setConfirmedImmutable(e.target.checked)}
+            aria-describedby={errors.confirmedImmutable ? "immutable-error" : undefined}
+            className="mt-0.5 w-4 h-4 rounded border-mist accent-brand"
+          />
+          <span className="text-xs text-stone leading-relaxed">
+            I confirm my name and email are accurate and acknowledge they cannot be modified later.
+          </span>
+        </label>
+        {errors.confirmedImmutable && <p id="immutable-error" role="alert" className="text-danger text-xs mt-1">{errors.confirmedImmutable}</p>}
+      </div>
+
       <button
         type="submit"
         disabled={loading}
@@ -335,6 +363,7 @@ export default function Auth({ mode, setMode, navigate, onLogin }: AuthProps) {
   };
 
   const handleVerified = () => {
+    onLogin();
     navigate("onboarding");
   };
 

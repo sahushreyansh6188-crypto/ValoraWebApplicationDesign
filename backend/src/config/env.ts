@@ -3,6 +3,13 @@ import { z } from 'zod';
 
 dotenv.config();
 
+if (process.env.DATABASE_URL && (process.env.DATABASE_URL.includes('[') || process.env.DATABASE_URL.includes(']'))) {
+  process.env.DATABASE_URL = 'postgresql://postgres:postgres@127.0.0.1:5432/valora?schema=public';
+}
+if (process.env.DIRECT_URL && (process.env.DIRECT_URL.includes('[') || process.env.DIRECT_URL.includes(']'))) {
+  process.env.DIRECT_URL = 'postgresql://postgres:postgres@127.0.0.1:5432/valora?schema=public';
+}
+
 const envSchema = z.object({
   PORT: z.string().default('8080').transform((v) => parseInt(v, 10)),
   HOST: z.string().default('0.0.0.0'),

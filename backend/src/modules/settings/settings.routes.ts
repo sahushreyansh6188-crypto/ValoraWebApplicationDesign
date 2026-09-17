@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { SettingsService } from './settings.service.js';
 import { authenticate } from '../../middleware/authenticate.js';
 import { sendSuccess } from '../../utils/response.js';
+import { AppError } from '../../utils/errors.js';
 
 export const settingsRoutes: FastifyPluginAsync = async (fastify) => {
   const settingsService = new SettingsService(fastify.prisma);
@@ -95,14 +96,24 @@ export const settingsRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.patch('/account', async (request, reply) => {
     const body = z
       .object({
-        email: z.string().email().optional(),
+        name: z.string().optional(),
+        email: z.string().optional(),
         currentPassword: z.string().optional(),
         newPassword: z.string().min(8).optional(),
       })
       .parse(request.body);
 
-    if (body.email) {
-      await settingsService.updateEmail(request.user!.sub, body.email);
+    if (body.email !== undefined) {
+      const user = await fastify.prisma.user.findUnique({ where: { id: request.user!.sub } });
+      if (user && body.email.toLowerCase().trim() !== user.email.toLowerCase().trim()) {
+        throw AppError.badRequest('Email address is an immutable account identifier and cannot be changed.');
+      }
+    }
+    if (body.name !== undefined) {
+      const profile = await fastify.prisma.profile.findUnique({ where: { userId: request.user!.sub } });
+      if (profile && body.name.trim() !== profile.name) {
+        throw AppError.badRequest('Name is an immutable account identifier and cannot be changed.');
+      }
     }
     if (body.currentPassword && body.newPassword) {
       await settingsService.updatePassword(

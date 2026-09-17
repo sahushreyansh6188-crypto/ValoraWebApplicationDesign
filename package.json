@@ -3,11 +3,16 @@
   "version": "1.0.0",
   "private": true,
   "description": "VALORA - Values-first matchmaking platform",
+  "workspaces": [
+    "ValoraWebApplicationDesign",
+    "backend"
+  ],
   "scripts": {
-    "build": "npm run build --prefix backend && npm run build --prefix ValoraWebApplicationDesign",
-    "test": "npm test --prefix backend",
+    "dev": "bash ./scripts/start-dev.sh",
+    "build": "npm run build --prefix ValoraWebApplicationDesign",
+    "preview": "npm run preview --prefix ValoraWebApplicationDesign",
+    "lint": "npm run lint --prefix ValoraWebApplicationDesign",
     "dev:backend": "npm run dev --prefix backend",
-    "dev:frontend": "npm run dev --prefix ValoraWebApplicationDesign",
-    "start:backend": "npm start --prefix backend"
+    "dev:frontend": "npm run dev --prefix ValoraWebApplicationDesign"
   }
 }

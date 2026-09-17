@@ -1,0 +1,8 @@
+{
+  "name": "VALORA — Values-First Relationship Platform",
+  "description": "A values-first relationship platform for adults seeking intentional connection.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

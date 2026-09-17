@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Screen, AuthMode } from "./types";
+import { tokenStorage, profilesApi, authApi } from "./services/api";
 
 import Navigation from "./components/Navigation";
 import Landing from "./pages/Landing";
@@ -18,6 +19,20 @@ export default function App() {
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
+  useEffect(() => {
+    const token = tokenStorage.get();
+    if (token) {
+      profilesApi.getMe().then((p) => {
+        if (p && p.id) {
+          setIsAuthenticated(true);
+          setScreen("discover");
+        }
+      }).catch(() => {
+        tokenStorage.clear();
+      });
+    }
+  }, []);
+
   const navigate = (s: Screen) => setScreen(s);
 
   const handleLogin = () => {
@@ -30,7 +45,11 @@ export default function App() {
     setScreen("discover");
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await authApi.logout();
+    } catch {}
+    tokenStorage.clear();
     setIsAuthenticated(false);
     setScreen("landing");
   };
@@ -46,9 +65,6 @@ export default function App() {
           mode={authMode}
           setMode={(m) => {
             setAuthMode(m);
-            if (m === "verify") {
-              // verify screen handled inside Auth
-            }
           }}
           navigate={(s) => {
             if (s === "onboarding") {
@@ -76,6 +92,10 @@ export default function App() {
   }
 
   // ── Authenticated ────────────────────────────────────────────────────────
+  if (screen === "onboarding") {
+    return <Onboarding onComplete={() => setScreen("my-profile")} />;
+  }
+
   return (
     <div className="min-h-screen bg-ivory">
       <Navigation screen={screen} navigate={navigate} />
@@ -85,7 +105,7 @@ export default function App() {
       {screen === "matches" && <Matches navigate={navigate} />}
       {screen === "messages" && <Messages />}
       {screen === "notifications" && <Notifications navigate={navigate} />}
-      {screen === "my-profile" && <MyProfile />}
+      {screen === "my-profile" && <MyProfile navigate={navigate} />}
       {screen === "settings" && <Settings navigate={navigate} onLogout={handleLogout} />}
       {screen === "admin" && <Admin navigate={navigate} />}
     </div>

@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import type { NavigateFn, UserProfile } from "../types";
-import { matches as mockMatches } from "../data/mock";
 import { discoveryApi } from "../services/api";
 
 interface MatchesProps {
@@ -8,17 +7,32 @@ interface MatchesProps {
 }
 
 export default function Matches({ navigate }: MatchesProps) {
-  const [matchList, setMatchList] = useState<UserProfile[]>(mockMatches);
+  const [matchList, setMatchList] = useState<UserProfile[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
     discoveryApi.getMatches().then((data) => {
-      if (active && data && data.length > 0) {
-        setMatchList(data);
+      if (active) {
+        setMatchList(data || []);
+        setLoading(false);
       }
-    }).catch(() => {});
+    }).catch(() => {
+      if (active) setLoading(false);
+    });
     return () => { active = false; };
   }, []);
+
+  if (loading) {
+    return (
+      <div className="md:ml-60 min-h-screen bg-ivory flex items-center justify-center p-6">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-xs text-stone">Loading matches…</p>
+        </div>
+      </div>
+    );
+  }
 
   const matches = matchList;
   if (matches.length === 0) {

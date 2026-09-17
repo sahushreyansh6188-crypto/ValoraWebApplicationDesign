@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from "react";
 import type { Conversation, Message } from "../types";
-import { conversations as initialConvs } from "../data/mock";
 import { messagingApi, connectChatWebSocket } from "../services/api";
 
 const starters = [
@@ -214,16 +213,20 @@ function ConversationPane({
 }
 
 export default function Messages() {
-  const [convs, setConvs] = useState<Conversation[]>(initialConvs);
+  const [convs, setConvs] = useState<Conversation[]>([]);
   const [selected, setSelected] = useState<Conversation | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
     messagingApi.getConversations().then((data) => {
-      if (active && data && data.length > 0) {
-        setConvs(data);
+      if (active) {
+        setConvs(data || []);
+        setLoading(false);
       }
-    }).catch(() => {});
+    }).catch(() => {
+      if (active) setLoading(false);
+    });
     return () => { active = false; };
   }, []);
 

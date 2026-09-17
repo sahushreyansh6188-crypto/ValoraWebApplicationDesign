@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { NavigateFn } from "../types";
-import { settingsApi } from "../services/api";
+import { settingsApi, profilesApi } from "../services/api";
 
 interface SettingsProps {
   navigate: NavigateFn;
@@ -204,8 +204,30 @@ export default function Settings({ navigate, onLogout }: SettingsProps) {
   const [notifications, setNotifications] = useState({ matches: true, messages: true, system: false });
   const [privacy, setPrivacy] = useState({ showLastActive: true, showLocation: true });
   const [visibility, setVisibility] = useState(true);
-  const [email, setEmail] = useState("alex@example.com");
-  const [editingEmail, setEditingEmail] = useState(false);
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    profilesApi.getMe().then((p) => {
+      if (active && p) {
+        setName(p.name || "");
+      }
+    }).catch(() => {});
+
+    settingsApi.getSettings().then((s) => {
+      if (active && s) {
+        if (s.email) setEmail(s.email);
+        if (s.notifyMatches !== undefined) setNotifications((prev) => ({ ...prev, matches: s.notifyMatches }));
+        if (s.notifyMessages !== undefined) setNotifications((prev) => ({ ...prev, messages: s.notifyMessages }));
+        if (s.notifySystem !== undefined) setNotifications((prev) => ({ ...prev, system: s.notifySystem }));
+        if (s.privacyShowLastActive !== undefined) setPrivacy((prev) => ({ ...prev, showLastActive: s.privacyShowLastActive }));
+        if (s.privacyShowLocation !== undefined) setPrivacy((prev) => ({ ...prev, showLocation: s.privacyShowLocation }));
+      }
+    }).catch(() => {});
+
+    return () => { active = false; };
+  }, []);
 
   return (
     <div className="md:ml-60 min-h-screen bg-ivory pb-24 md:pb-6">
@@ -218,26 +240,35 @@ export default function Settings({ navigate, onLogout }: SettingsProps) {
         <section>
           <SectionHeader title="Account" />
           <div className="bg-white border border-mist rounded-2xl overflow-hidden divide-y divide-mist">
-            <SettingRow label="Email address" description={editingEmail ? undefined : email}>
-              <button onClick={() => setEditingEmail(!editingEmail)} className="text-xs text-clay font-medium">
-                {editingEmail ? "Cancel" : "Change"}
-              </button>
+            <SettingRow
+              label="Registered name"
+              description={name ? `${name} (Permanent registered account identifier)` : "Permanent registered account identifier"}
+            >
+              <span className="text-xs text-stone bg-cream px-2.5 py-1 rounded-full border border-mist">
+                Immutable
+              </span>
             </SettingRow>
-            {editingEmail && (
-              <div className="px-4 py-3 bg-ivory">
-                <input type="email" defaultValue={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-2.5 rounded-xl text-sm bg-white border border-mist text-charcoal focus:outline-none focus:border-brand transition-colors" aria-label="New email address" />
-                <button
-                  onClick={async () => {
-                    await settingsApi.updateAccount({ email }).catch(() => {});
-                    setEditingEmail(false);
-                  }}
-                  className="mt-2 text-xs text-brand font-medium"
-                >
-                  Save email
-                </button>
-              </div>
-            )}
-            <SettingRow label="Change password" description="Last changed 3 months ago" onClick={() => {}} />
+
+            <SettingRow
+              label="Email address"
+              description={email ? `${email} (Permanent registered account identifier)` : "Permanent registered account identifier"}
+            >
+              <span className="text-xs text-stone bg-cream px-2.5 py-1 rounded-full border border-mist">
+                Immutable
+              </span>
+            </SettingRow>
+
+            <div className="px-4 py-2.5 bg-sand/30 text-[11px] text-stone leading-relaxed">
+              Registered email address and name are permanent to protect community safety and trust.
+            </div>
+
+            <SettingRow
+              label="Onboarding Questionnaire"
+              description="Review or update your values, lifestyle, and communication preferences"
+              onClick={() => navigate("onboarding")}
+            />
+
+            <SettingRow label="Change password" description="Manage your account security" onClick={() => {}} />
             <SettingRow label="Subscription" description="Free plan · Upgrade to Connect" onClick={() => {}} />
             <SettingRow label="Connected accounts">
               <span className="text-xs text-stone">Google</span>

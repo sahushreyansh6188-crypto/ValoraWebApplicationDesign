@@ -47,6 +47,16 @@ const mockSubs = [
   { plan: "Annual", count: 1207, revenue: "$119,493/yr", pct: 10 },
 ];
 
+const tabs: { id: AdminTab; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "users", label: "Users" },
+  { id: "reports", label: "Reports" },
+  { id: "moderation", label: "Moderation" },
+  { id: "suspensions", label: "Suspensions" },
+  { id: "audit", label: "Audit Log" },
+  { id: "subscriptions", label: "Subscriptions" },
+];
+
 function StatusBadge({ status }: { status: string }) {
   const configs: Record<string, string> = {
     active: "bg-brand-light text-brand",

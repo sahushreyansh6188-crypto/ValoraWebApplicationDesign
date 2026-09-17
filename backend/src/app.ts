@@ -64,8 +64,24 @@ export function buildApp(): FastifyInstance {
   // 4. API Routes (/api/v1)
   app.register(
     async (api) => {
+      api.get('/health', async (_req, reply) => {
+        let dbStatus = 'connected';
+        try {
+          await app.prisma.$queryRaw`SELECT 1`;
+        } catch (err) {
+          dbStatus = `disconnected: ${(err as Error).message}`;
+        }
+        return sendSuccess(reply, {
+          status: 'healthy',
+          service: 'valora-backend',
+          database: dbStatus,
+          timestamp: new Date().toISOString(),
+          uptime: process.uptime(),
+        });
+      });
       api.register(authRoutes, { prefix: '/auth' });
       api.register(profilesRoutes, { prefix: '/profiles' });
+      api.register(profilesRoutes, { prefix: '/profile' });
       api.register(discoveryRoutes, { prefix: '/discovery' });
       api.register(connectionsRoutes, { prefix: '/connections' });
       api.register(messagingRoutes, { prefix: '/messaging' });

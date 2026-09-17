@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import type { UserProfile } from "../types";
-import { profiles, currentUser } from "../data/mock";
-import { discoveryApi } from "../services/api";
+import { discoveryApi, profilesApi } from "../services/api";
 
 const lifestyleFilters = ["All", "alcohol-free", "vegan", "zero-waste", "mindfulness practice", "outdoor lifestyle", "plant-based"];
 
@@ -106,12 +105,14 @@ function SharedTag({ label, shared }: { label: string; shared: boolean }) {
   );
 }
 
-function ProfileDetail({ profile, onClose, onConnect }: { profile: UserProfile; onClose: () => void; onConnect: () => void }) {
+function ProfileDetail({ profile, onClose, onConnect, currentUser }: { profile: UserProfile; onClose: () => void; onConnect: () => void; currentUser?: UserProfile | null }) {
   const [connected, setConnected] = useState(false);
   const [tab, setTab] = useState<"about" | "values" | "lifestyle" | "communication">("about");
 
-  const sharedValues = profile.values.filter((v) => currentUser.values.includes(v));
-  const sharedLifestyle = profile.lifestyle.filter((l) => currentUser.lifestyle.includes(l));
+  const myValues = currentUser?.values || [];
+  const myLifestyle = currentUser?.lifestyle || [];
+  const sharedValues = profile.values.filter((v) => myValues.includes(v));
+  const sharedLifestyle = profile.lifestyle.filter((l) => myLifestyle.includes(l));
 
   const handleConnect = () => {
     setConnected(true);
@@ -216,7 +217,7 @@ function ProfileDetail({ profile, onClose, onConnect }: { profile: UserProfile; 
               <p className="text-xs text-stone mb-4">Green tags = shared values</p>
               <div className="flex flex-wrap gap-2">
                 {profile.values.map((v) => (
-                  <SharedTag key={v} label={v} shared={currentUser.values.includes(v)} />
+                  <SharedTag key={v} label={v} shared={currentUser?.values ? currentUser.values.includes(v) : false} />
                 ))}
               </div>
             </div>
@@ -226,7 +227,7 @@ function ProfileDetail({ profile, onClose, onConnect }: { profile: UserProfile; 
               <p className="text-xs text-stone mb-4">Green tags = shared lifestyle choices</p>
               <div className="flex flex-wrap gap-2">
                 {profile.lifestyle.map((l) => (
-                  <SharedTag key={l} label={l} shared={currentUser.lifestyle.includes(l)} />
+                  <SharedTag key={l} label={l} shared={currentUser?.lifestyle ? currentUser.lifestyle.includes(l) : false} />
                 ))}
               </div>
             </div>
@@ -273,15 +274,34 @@ export default function Discover() {
   const [activeFilter, setActiveFilter] = useState("All");
   const [selectedProfile, setSelectedProfile] = useState<UserProfile | null>(null);
   const [showSuccess, setShowSuccess] = useState<string | null>(null);
-  const [profileList, setProfileList] = useState<UserProfile[]>(profiles);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [profileList, setProfileList] = useState<UserProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
-    discoveryApi.getFeed({ lifestyle: activeFilter }).then((data) => {
-      if (active && data && data.length > 0) {
-        setProfileList(data);
-      }
+    profilesApi.getMe().then((u) => {
+      if (active && u) setCurrentUser(u);
     }).catch(() => {});
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError(null);
+    discoveryApi.getFeed({ lifestyle: activeFilter }).then((data) => {
+      if (active) {
+        setProfileList(data || []);
+        setLoading(false);
+      }
+    }).catch((err) => {
+      if (active) {
+        setError((err as Error)?.message || "Unable to load profiles.");
+        setLoading(false);
+      }
+    });
     return () => { active = false; };
   }, [activeFilter]);
 
@@ -329,7 +349,42 @@ export default function Discover() {
       </div>
 
       <div className="p-6 pb-24 md:pb-6">
-        {filtered.length === 0 ? (
+        {loading ? (
+          /* Loading state */
+          <div className="text-center py-20">
+            <div className="w-9 h-9 border-2 border-brand border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-stone text-sm">Loading compatible profiles...</p>
+          </div>
+        ) : error ? (
+          /* Error state */
+          <div className="text-center py-20">
+            <div className="w-16 h-16 bg-cream rounded-full flex items-center justify-center mx-auto mb-5">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#D0614A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="12"/>
+                <line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+            </div>
+            <h3 className="text-lg font-semibold text-charcoal mb-2">Unable to load profiles.</h3>
+            <p className="text-stone text-sm">Please check your connection or try again.</p>
+            <button
+              onClick={() => {
+                setLoading(true);
+                setError(null);
+                discoveryApi.getFeed({ lifestyle: activeFilter }).then((data) => {
+                  setProfileList(data || []);
+                  setLoading(false);
+                }).catch((err) => {
+                  setError((err as Error)?.message || "Unable to load profiles.");
+                  setLoading(false);
+                });
+              }}
+              className="mt-5 inline-block bg-white border border-mist text-brand px-5 py-2 rounded-full text-sm font-medium hover:bg-cream transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        ) : filtered.length === 0 ? (
           /* Empty state */
           <div className="text-center py-20">
             <div className="w-16 h-16 bg-cream rounded-full flex items-center justify-center mx-auto mb-5">
@@ -338,11 +393,19 @@ export default function Discover() {
                 <path d="M21 21l-4.35-4.35"/>
               </svg>
             </div>
-            <h3 className="text-lg font-semibold text-charcoal mb-2">No matches for this filter</h3>
-            <p className="text-stone text-sm">Try a different lifestyle filter, or broaden your discovery preferences in settings.</p>
-            <button onClick={() => setActiveFilter("All")} className="mt-5 text-brand text-sm font-medium hover:underline">
-              Clear filter
-            </button>
+            <h3 className="text-lg font-semibold text-charcoal mb-2">
+              {activeFilter === "All" ? "No eligible profiles currently available." : "No matches for this filter"}
+            </h3>
+            <p className="text-stone text-sm max-w-md mx-auto">
+              {activeFilter === "All"
+                ? "New members appear here as they complete onboarding and publish their profiles. Broaden your discovery preferences in settings or check back soon."
+                : "Try a different lifestyle filter, or broaden your discovery preferences in settings."}
+            </p>
+            {activeFilter !== "All" && (
+              <button onClick={() => setActiveFilter("All")} className="mt-5 text-brand text-sm font-medium hover:underline">
+                Clear filter
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -357,6 +420,7 @@ export default function Discover() {
       {selectedProfile && (
         <ProfileDetail
           profile={selectedProfile}
+          currentUser={currentUser}
           onClose={() => setSelectedProfile(null)}
           onConnect={handleConnect}
         />
