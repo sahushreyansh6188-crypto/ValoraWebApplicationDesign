@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import type { NavigateFn, UserProfile } from "../types";
 import { discoveryApi } from "../services/api";
+import UndiscoveredAvatar from "../components/UndiscoveredAvatar";
 
 interface MatchesProps {
   navigate: NavigateFn;
@@ -10,17 +11,30 @@ export default function Matches({ navigate }: MatchesProps) {
   const [matchList, setMatchList] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let active = true;
-    discoveryApi.getMatches().then((data) => {
-      if (active) {
+  const fetchMatches = (silent = false) => {
+    if (!silent) setLoading(true);
+    return discoveryApi
+      .getMatches()
+      .then((data) => {
         setMatchList(data || []);
-        setLoading(false);
-      }
-    }).catch(() => {
-      if (active) setLoading(false);
-    });
-    return () => { active = false; };
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!silent) setLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    fetchMatches(false);
+
+    // Poll matches every 10 seconds for real-time mutual matches
+    const interval = setInterval(() => {
+      fetchMatches(true);
+    }, 10000);
+
+    return () => {
+      clearInterval(interval);
+    };
   }, []);
 
   if (loading) {
@@ -90,14 +104,21 @@ export default function Matches({ navigate }: MatchesProps) {
               className="bg-white rounded-2xl border border-mist overflow-hidden hover:shadow-md transition-shadow"
             >
               {/* Photo */}
-              <div className="relative h-56 bg-cream">
-                <img
-                  src={match.photo}
-                  alt={`${match.name}, ${match.age}`}
-                  className="w-full h-full object-cover"
-                  loading="lazy"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+              <div className="relative h-56 bg-cream overflow-hidden">
+                {match.photo ? (
+                  <img
+                    src={match.photo}
+                    alt={`${match.name}, ${match.age}`}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-sand/80 via-cream to-ivory">
+                    <UndiscoveredAvatar photo="" name={match.name} size="xl" />
+                    <span className="text-[11px] font-medium text-stone mt-2 uppercase tracking-wide">Photo Undiscovered</span>
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
                 <div className="absolute bottom-4 left-4 text-white">
                   <h3 className="font-semibold text-base">{match.name}, {match.age}</h3>
                   <p className="text-xs text-white/75">{match.pronouns}</p>

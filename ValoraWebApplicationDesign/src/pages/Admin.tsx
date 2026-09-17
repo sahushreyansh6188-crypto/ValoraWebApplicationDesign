@@ -8,45 +8,6 @@ interface AdminProps {
 
 type AdminTab = "overview" | "users" | "reports" | "moderation" | "suspensions" | "audit" | "subscriptions";
 
-const statCards = [
-  { label: "Total users", value: "12,847", change: "+234 this week", up: true },
-  { label: "Monthly active", value: "8,234", change: "+12% vs last month", up: true },
-  { label: "New today", value: "47", change: "-3 vs yesterday", up: false },
-  { label: "Pending reports", value: "12", change: "3 critical", up: false },
-  { label: "Active subscriptions", value: "3,421", change: "+89 this week", up: true },
-  { label: "Matches today", value: "318", change: "+22% vs average", up: true },
-];
-
-const mockUsers = [
-  { id: "u001", name: "Jordan Lee", email: "jordan@example.com", age: 31, joined: "Mar 1, 2026", status: "active", plan: "Connect", reports: 0 },
-  { id: "u002", name: "Sam Rivera", email: "sam@example.com", age: 28, joined: "Feb 14, 2026", status: "active", plan: "Free", reports: 1 },
-  { id: "u003", name: "River Walsh", email: "river@example.com", age: 34, joined: "Jan 28, 2026", status: "suspended", plan: "Connect", reports: 3 },
-  { id: "u004", name: "Maya Singh", email: "maya@example.com", age: 26, joined: "Mar 8, 2026", status: "active", plan: "Annual", reports: 0 },
-  { id: "u005", name: "Devon Clarke", email: "devon@example.com", age: 33, joined: "Feb 2, 2026", status: "active", plan: "Free", reports: 0 },
-  { id: "u006", name: "Priya Nair", email: "priya@example.com", age: 30, joined: "Mar 11, 2026", status: "pending", plan: "Free", reports: 0 },
-];
-
-const mockReports = [
-  { id: "r001", reporter: "Sam Rivera", reported: "u999", reason: "Inappropriate messages", severity: "high", status: "open", time: "2 hours ago" },
-  { id: "r002", reporter: "Maya Singh", reported: "u888", reason: "Misleading profile information", severity: "medium", status: "open", time: "5 hours ago" },
-  { id: "r003", reporter: "Jordan Lee", reported: "u777", reason: "Harassment", severity: "high", status: "under review", time: "1 day ago" },
-  { id: "r004", reporter: "Devon Clarke", reported: "u666", reason: "Spam / solicitation", severity: "low", status: "resolved", time: "2 days ago" },
-];
-
-const mockAudit = [
-  { id: "a1", action: "User suspended", actor: "Admin (system)", target: "River Walsh (u003)", time: "Jan 30, 2026 · 11:42 AM" },
-  { id: "a2", action: "Report resolved", actor: "Moderator Aria", target: "Report r004", time: "Mar 11, 2026 · 9:15 AM" },
-  { id: "a3", action: "Account verified", actor: "System", target: "Priya Nair (u006)", time: "Mar 11, 2026 · 8:01 AM" },
-  { id: "a4", action: "Profile removed", actor: "Moderator Ben", target: "Anonymous (u555)", time: "Mar 10, 2026 · 4:30 PM" },
-  { id: "a5", action: "Subscription upgraded", actor: "System", target: "Maya Singh (u004)", time: "Mar 8, 2026 · 2:22 PM" },
-];
-
-const mockSubs = [
-  { plan: "Free", count: 9426, revenue: "$0", pct: 73 },
-  { plan: "Connect (monthly)", count: 2214, revenue: "$33,210/mo", pct: 17 },
-  { plan: "Annual", count: 1207, revenue: "$119,493/yr", pct: 10 },
-];
-
 const tabs: { id: AdminTab; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "users", label: "Users" },
@@ -81,30 +42,57 @@ function SeverityDot({ severity }: { severity: string }) {
 export default function Admin({ navigate }: AdminProps) {
   const [tab, setTab] = useState<AdminTab>("overview");
   const [userSearch, setUserSearch] = useState("");
-  const [users, setUsers] = useState(mockUsers);
-  const [reports, setReports] = useState(mockReports);
+  const [users, setUsers] = useState<any[]>([]);
+  const [reports, setReports] = useState<any[]>([]);
+  const [overviewStats, setOverviewStats] = useState<any[]>([]);
+  const [moderationFlags, setModerationFlags] = useState<any[]>([]);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [subData, setSubData] = useState<any>({ mrr: "$0", mrrGrowth: "Live tally", tiers: [] });
+  const [loading, setLoading] = useState(true);
+
+  const fetchAllAdminData = () => {
+    Promise.all([
+      adminApi.getUsers().catch(() => []),
+      adminApi.getReports().catch(() => []),
+      adminApi.getOverview().catch(() => null),
+      adminApi.getModerationFlags().catch(() => []),
+      adminApi.getAuditLogs().catch(() => []),
+      adminApi.getSubscriptions().catch(() => null),
+    ]).then(([userData, reportData, overviewData, flagsData, logsData, subsData]) => {
+      setUsers(userData || []);
+      setReports(reportData || []);
+      if (overviewData?.statCards) {
+        setOverviewStats(overviewData.statCards);
+      }
+      if (flagsData) {
+        setModerationFlags(flagsData);
+      }
+      if (logsData) {
+        setAuditLogs(logsData);
+      }
+      if (subsData) {
+        setSubData(subsData);
+      }
+      setLoading(false);
+    });
+  };
 
   useEffect(() => {
-    let active = true;
-    adminApi.getUsers().then((data) => {
-      if (active && data && data.length > 0) setUsers(data);
-    }).catch(() => {});
-
-    adminApi.getReports().then((data) => {
-      if (active && data && data.length > 0) setReports(data);
-    }).catch(() => {});
-
-    return () => { active = false; };
+    fetchAllAdminData();
+    const interval = setInterval(fetchAllAdminData, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleToggleUser = async (userId: string, newStatus: string) => {
     setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, status: newStatus } : u)));
     await adminApi.updateUserStatus(userId, newStatus).catch(() => {});
+    fetchAllAdminData();
   };
 
   const handleResolveReport = async (reportId: string) => {
     setReports((prev) => prev.map((r) => (r.id === reportId ? { ...r, status: "resolved" } : r)));
     await adminApi.updateReportStatus(reportId, "resolved").catch(() => {});
+    fetchAllAdminData();
   };
 
   const filteredUsers = users.filter(
@@ -113,13 +101,15 @@ export default function Admin({ navigate }: AdminProps) {
       u.email.toLowerCase().includes(userSearch.toLowerCase())
   );
 
+  const openReportsCount = reports.filter((r) => r.status === "open").length;
+
   return (
     <div className="md:ml-60 min-h-screen bg-ivory pb-24 md:pb-0">
       {/* Admin header */}
       <div className="bg-charcoal text-ivory px-6 py-4 flex items-center justify-between">
         <div>
           <h1 className="font-display text-xl">Admin Dashboard</h1>
-          <p className="text-xs text-stone mt-0.5">Valora platform administration</p>
+          <p className="text-xs text-stone mt-0.5">Valora platform administration · Real-time live view</p>
         </div>
         <button
           onClick={() => navigate("settings")}
@@ -146,9 +136,9 @@ export default function Admin({ navigate }: AdminProps) {
               }`}
             >
               {t.label}
-              {t.id === "reports" && (
+              {t.id === "reports" && openReportsCount > 0 && (
                 <span className="ml-1.5 w-4 h-4 bg-danger text-ivory text-[10px] font-bold rounded-full inline-flex items-center justify-center">
-                  {mockReports.filter((r) => r.status === "open").length}
+                  {openReportsCount}
                 </span>
               )}
             </button>
@@ -161,7 +151,17 @@ export default function Admin({ navigate }: AdminProps) {
         {tab === "overview" && (
           <div className="space-y-6">
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-              {statCards.map((s) => (
+              {(overviewStats.length > 0
+                ? overviewStats
+                : [
+                    { label: "Total users", value: users.length.toString(), change: `${users.length} registered`, up: true },
+                    { label: "Monthly active", value: users.length.toString(), change: "Live database", up: true },
+                    { label: "New today", value: "0", change: "0 today", up: false },
+                    { label: "Pending reports", value: openReportsCount.toString(), change: openReportsCount === 0 ? "All clear" : `${openReportsCount} open`, up: openReportsCount === 0 },
+                    { label: "Active subscriptions", value: "0", change: "0 paid", up: true },
+                    { label: "Matches today", value: "0", change: "0 matches", up: true },
+                  ]
+              ).map((s) => (
                 <div key={s.label} className="bg-white border border-mist rounded-2xl p-5">
                   <p className="text-xs text-stone mb-1">{s.label}</p>
                   <p className="font-display text-3xl text-charcoal mb-2">{s.value}</p>
@@ -181,18 +181,22 @@ export default function Admin({ navigate }: AdminProps) {
                   View all
                 </button>
               </div>
-              <div className="space-y-3">
-                {mockReports.slice(0, 3).map((r) => (
-                  <div key={r.id} className="flex items-center gap-3">
-                    <SeverityDot severity={r.severity} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-flint truncate">{r.reason}</p>
-                      <p className="text-xs text-stone">Reported by {r.reporter} · {r.time}</p>
+              {reports.length === 0 ? (
+                <p className="text-xs text-stone py-3">No active reports. Community is clean.</p>
+              ) : (
+                <div className="space-y-3">
+                  {reports.slice(0, 3).map((r) => (
+                    <div key={r.id} className="flex items-center gap-3">
+                      <SeverityDot severity={r.severity} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-flint truncate">{r.reason}</p>
+                        <p className="text-xs text-stone">Reported by {r.reporter} · {r.time}</p>
+                      </div>
+                      <StatusBadge status={r.status} />
                     </div>
-                    <StatusBadge status={r.status} />
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -232,37 +236,51 @@ export default function Admin({ navigate }: AdminProps) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-mist">
-                    {filteredUsers.map((u) => (
-                      <tr key={u.id} className="hover:bg-ivory transition-colors">
-                        <td className="px-4 py-3">
-                          <p className="font-medium text-charcoal">{u.name}</p>
-                          <p className="text-xs text-stone">{u.email}</p>
-                        </td>
-                        <td className="px-4 py-3 text-stone">{u.age}</td>
-                        <td className="px-4 py-3 text-stone text-xs">{u.joined}</td>
-                        <td className="px-4 py-3">
-                          <span className="text-xs font-medium text-flint bg-cream px-2.5 py-1 rounded-full">{u.plan}</span>
-                        </td>
-                        <td className="px-4 py-3"><StatusBadge status={u.status} /></td>
-                        <td className="px-4 py-3">
-                          {u.reports > 0 ? (
-                            <span className="text-danger text-xs font-semibold">{u.reports}</span>
-                          ) : (
-                            <span className="text-stone text-xs">0</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <button className="text-xs text-brand hover:underline">View</button>
-                            {u.status !== "suspended" ? (
-                              <button onClick={() => handleToggleUser(u.id, "suspended")} className="text-xs text-danger hover:underline">Suspend</button>
-                            ) : (
-                              <button onClick={() => handleToggleUser(u.id, "active")} className="text-xs text-stone hover:underline">Reinstate</button>
-                            )}
-                          </div>
+                    {loading ? (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-8 text-center text-xs text-stone">
+                          Loading members...
                         </td>
                       </tr>
-                    ))}
+                    ) : filteredUsers.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-8 text-center text-xs text-stone">
+                          No registered users found. New accounts will appear here in real-time when created.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredUsers.map((u) => (
+                        <tr key={u.id} className="hover:bg-ivory transition-colors">
+                          <td className="px-4 py-3">
+                            <p className="font-medium text-charcoal">{u.name}</p>
+                            <p className="text-xs text-stone">{u.email}</p>
+                          </td>
+                          <td className="px-4 py-3 text-stone">{u.age}</td>
+                          <td className="px-4 py-3 text-stone text-xs">{u.joined}</td>
+                          <td className="px-4 py-3">
+                            <span className="text-xs font-medium text-flint bg-cream px-2.5 py-1 rounded-full">{u.plan}</span>
+                          </td>
+                          <td className="px-4 py-3"><StatusBadge status={u.status} /></td>
+                          <td className="px-4 py-3">
+                            {u.reports > 0 ? (
+                              <span className="text-danger text-xs font-semibold">{u.reports}</span>
+                            ) : (
+                              <span className="text-stone text-xs">0</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <button className="text-xs text-brand hover:underline">View</button>
+                              {u.status !== "suspended" ? (
+                                <button onClick={() => handleToggleUser(u.id, "suspended")} className="text-xs text-danger hover:underline">Suspend</button>
+                              ) : (
+                                <button onClick={() => handleToggleUser(u.id, "active")} className="text-xs text-stone hover:underline">Reinstate</button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -281,35 +299,48 @@ export default function Admin({ navigate }: AdminProps) {
               ))}
             </div>
             <div className="space-y-3">
-              {reports.map((r) => (
-                <div key={r.id} className="bg-white border border-mist rounded-2xl p-5">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <SeverityDot severity={r.severity} />
-                      <h3 className="text-sm font-semibold text-charcoal">{r.reason}</h3>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <StatusBadge status={r.status} />
-                    </div>
+              {reports.length === 0 ? (
+                <div className="bg-white border border-mist rounded-2xl p-8 text-center">
+                  <div className="w-12 h-12 bg-cream rounded-full flex items-center justify-center mx-auto mb-3">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#C4A882" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                      <polyline points="22 4 12 14.01 9 11.01" />
+                    </svg>
                   </div>
-                  <p className="text-xs text-stone mb-4">
-                    Reported by <strong className="text-flint">{r.reporter}</strong> · {r.time}
-                  </p>
-                  {r.status !== "resolved" && (
-                    <div className="flex gap-2">
-                      <button className="px-4 py-2 bg-brand text-ivory text-xs font-medium rounded-full hover:bg-brand-hover transition-colors">
-                        Review profile
-                      </button>
-                      <button onClick={() => handleToggleUser(r.reported, "suspended")} className="px-4 py-2 bg-danger-light text-danger text-xs font-medium rounded-full hover:bg-red-100 transition-colors">
-                        Suspend user
-                      </button>
-                      <button onClick={() => handleResolveReport(r.id)} className="px-4 py-2 bg-cream text-flint text-xs font-medium rounded-full hover:bg-mist transition-colors">
-                        Dismiss
-                      </button>
-                    </div>
-                  )}
+                  <p className="text-sm font-semibold text-charcoal mb-1">No open reports</p>
+                  <p className="text-xs text-stone">The community is healthy. Any new user reports will appear here in real-time.</p>
                 </div>
-              ))}
+              ) : (
+                reports.map((r) => (
+                  <div key={r.id} className="bg-white border border-mist rounded-2xl p-5">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <SeverityDot severity={r.severity} />
+                        <h3 className="text-sm font-semibold text-charcoal">{r.reason}</h3>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={r.status} />
+                      </div>
+                    </div>
+                    <p className="text-xs text-stone mb-4">
+                      Reported by <strong className="text-flint">{r.reporter}</strong> · {r.time}
+                    </p>
+                    {r.status !== "resolved" && (
+                      <div className="flex gap-2">
+                        <button className="px-4 py-2 bg-brand text-ivory text-xs font-medium rounded-full hover:bg-brand-hover transition-colors">
+                          Review profile
+                        </button>
+                        <button onClick={() => handleToggleUser(r.reported, "suspended")} className="px-4 py-2 bg-danger-light text-danger text-xs font-medium rounded-full hover:bg-red-100 transition-colors">
+                          Suspend user
+                        </button>
+                        <button onClick={() => handleResolveReport(r.id)} className="px-4 py-2 bg-cream text-flint text-xs font-medium rounded-full hover:bg-mist transition-colors">
+                          Dismiss
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}
@@ -319,16 +350,19 @@ export default function Admin({ navigate }: AdminProps) {
           <div className="space-y-4">
             <div className="bg-white border border-mist rounded-2xl p-5">
               <h3 className="text-sm font-semibold text-charcoal mb-4">Moderation queue</h3>
-              <p className="text-sm text-stone">No items requiring immediate moderation. All recent reports have been reviewed.</p>
+              <p className="text-sm text-stone">No items requiring immediate moderation. All reports are up-to-date.</p>
             </div>
             <div className="bg-white border border-mist rounded-2xl p-5">
               <h3 className="text-sm font-semibold text-charcoal mb-4">Automated flags</h3>
               <div className="space-y-3">
-                {[
-                  { label: "Profiles with no photo after 7 days", count: 23 },
-                  { label: "Accounts with 3+ reports", count: 4 },
-                  { label: "Dormant accounts (90+ days)", count: 142 },
-                ].map((item) => (
+                {(moderationFlags.length > 0
+                  ? moderationFlags
+                  : [
+                      { label: "Profiles with no photo after 7 days", count: 0 },
+                      { label: "Accounts with 3+ reports", count: 0 },
+                      { label: "Dormant accounts (90+ days)", count: 0 },
+                    ]
+                ).map((item) => (
                   <div key={item.label} className="flex items-center justify-between py-2 border-b border-mist last:border-0">
                     <span className="text-sm text-flint">{item.label}</span>
                     <div className="flex items-center gap-3">
@@ -348,32 +382,35 @@ export default function Admin({ navigate }: AdminProps) {
             <div className="px-5 py-4 border-b border-mist">
               <h3 className="text-sm font-semibold text-charcoal">Active suspensions</h3>
             </div>
-            <div className="divide-y divide-mist">
-              {users.filter((u) => u.status === "suspended").map((u) => (
-                <div key={u.id} className="px-5 py-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-charcoal">{u.name}</p>
-                    <p className="text-xs text-stone">{u.email} · {u.reports} reports</p>
-                    <p className="text-xs text-danger mt-1">Suspended Jan 30, 2026 · Reason: repeated reports</p>
+            {users.filter((u) => u.status === "suspended").length === 0 ? (
+              <div className="p-8 text-center text-xs text-stone">No accounts are currently suspended.</div>
+            ) : (
+              <div className="divide-y divide-mist">
+                {users.filter((u) => u.status === "suspended").map((u) => (
+                  <div key={u.id} className="px-5 py-4 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-charcoal">{u.name}</p>
+                      <p className="text-xs text-stone">{u.email} · {u.reports} reports</p>
+                      <p className="text-xs text-danger mt-1">Status: Suspended</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleToggleUser(u.id, "active")}
+                        className="px-3.5 py-1.5 bg-brand-light text-brand text-xs font-medium rounded-full hover:bg-brand hover:text-ivory transition-colors"
+                      >
+                        Reinstate
+                      </button>
+                      <button
+                        onClick={() => handleToggleUser(u.id, "banned")}
+                        className="px-3.5 py-1.5 bg-danger-light text-danger text-xs font-medium rounded-full hover:bg-red-100 transition-colors"
+                      >
+                        Permanent ban
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button className="text-xs text-stone hover:underline">View history</button>
-                    <button
-                      onClick={() => handleToggleUser(u.id, "active")}
-                      className="px-3.5 py-1.5 bg-brand-light text-brand text-xs font-medium rounded-full hover:bg-brand hover:text-ivory transition-colors"
-                    >
-                      Reinstate
-                    </button>
-                    <button
-                      onClick={() => handleToggleUser(u.id, "banned")}
-                      className="px-3.5 py-1.5 bg-danger-light text-danger text-xs font-medium rounded-full hover:bg-red-100 transition-colors"
-                    >
-                      Permanent ban
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -382,23 +419,27 @@ export default function Admin({ navigate }: AdminProps) {
           <div className="bg-white border border-mist rounded-2xl overflow-hidden">
             <div className="px-5 py-4 border-b border-mist">
               <h3 className="text-sm font-semibold text-charcoal">Audit log</h3>
-              <p className="text-xs text-stone mt-0.5">All administrative actions are recorded here.</p>
+              <p className="text-xs text-stone mt-0.5">All administrative actions are recorded in real-time.</p>
             </div>
-            <div className="divide-y divide-mist">
-              {mockAudit.map((a) => (
-                <div key={a.id} className="px-5 py-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-medium text-charcoal">{a.action}</p>
-                      <p className="text-xs text-stone mt-0.5">
-                        By <span className="font-medium text-flint">{a.actor}</span> · on {a.target}
-                      </p>
+            {auditLogs.length === 0 ? (
+              <div className="p-8 text-center text-xs text-stone">No administrative actions recorded yet.</div>
+            ) : (
+              <div className="divide-y divide-mist">
+                {auditLogs.map((a) => (
+                  <div key={a.id} className="px-5 py-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-medium text-charcoal">{a.action}</p>
+                        <p className="text-xs text-stone mt-0.5">
+                          By <span className="font-medium text-flint">{a.actor}</span> · on {a.target}
+                        </p>
+                      </div>
+                      <span className="text-xs text-stone shrink-0">{a.time}</span>
                     </div>
-                    <span className="text-xs text-stone shrink-0">{a.time}</span>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -406,7 +447,14 @@ export default function Admin({ navigate }: AdminProps) {
         {tab === "subscriptions" && (
           <div className="space-y-5">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {mockSubs.map((s) => (
+              {(subData.tiers?.length > 0
+                ? subData.tiers
+                : [
+                    { plan: "Free", count: users.length, revenue: "$0", pct: 100 },
+                    { plan: "Connect (monthly)", count: 0, revenue: "$0/mo", pct: 0 },
+                    { plan: "Annual", count: 0, revenue: "$0/yr", pct: 0 },
+                  ]
+              ).map((s: any) => (
                 <div key={s.plan} className="bg-white border border-mist rounded-2xl p-5">
                   <p className="text-xs text-stone mb-1">{s.plan}</p>
                   <p className="font-display text-3xl text-charcoal mb-1">{s.count.toLocaleString()}</p>
@@ -420,8 +468,8 @@ export default function Admin({ navigate }: AdminProps) {
             </div>
             <div className="bg-white border border-mist rounded-2xl p-5">
               <h3 className="text-sm font-semibold text-charcoal mb-4">Monthly recurring revenue</h3>
-              <p className="font-display text-4xl text-charcoal">$42,704 <span className="text-lg text-stone font-sans">/mo</span></p>
-              <p className="text-xs text-brand mt-2">↑ 14% vs last month</p>
+              <p className="font-display text-4xl text-charcoal">{subData.mrr || "$0"} <span className="text-lg text-stone font-sans">/mo</span></p>
+              <p className="text-xs text-brand mt-2">{subData.mrrGrowth || "Live database tally"}</p>
             </div>
           </div>
         )}

@@ -105,25 +105,33 @@ export class ProfilesService {
       });
 
       // 2. Photos update if provided
-      const rawPhotos = [
-        ...(data.photos || []),
-        ...(data.photo && (!data.photos || !data.photos.includes(data.photo)) ? [data.photo] : []),
-      ];
-      if (rawPhotos.length > 0) {
+      if (data.photos !== undefined || data.photo !== undefined) {
+        const rawPhotos = [
+          ...(data.photos || []),
+          ...(data.photo && (!data.photos || !data.photos.includes(data.photo)) ? [data.photo] : []),
+        ].filter((url): url is string => Boolean(url && url.trim().length > 0));
+
         await tx.profilePhoto.deleteMany({ where: { profileId: profile.id } });
         const uniquePhotos = Array.from(new Set(rawPhotos));
-        await tx.profilePhoto.createMany({
-          data: uniquePhotos.map((url, idx) => ({
-            profileId: profile.id,
-            photoUrl: url,
-            isPrimary: idx === 0,
-            displayOrder: idx,
-          })),
-        });
-        await tx.profile.update({
-          where: { id: profile.id },
-          data: { avatarUrl: uniquePhotos[0] },
-        });
+        if (uniquePhotos.length > 0) {
+          await tx.profilePhoto.createMany({
+            data: uniquePhotos.map((url, idx) => ({
+              profileId: profile.id,
+              photoUrl: url,
+              isPrimary: idx === 0,
+              displayOrder: idx,
+            })),
+          });
+          await tx.profile.update({
+            where: { id: profile.id },
+            data: { avatarUrl: uniquePhotos[0] },
+          });
+        } else {
+          await tx.profile.update({
+            where: { id: profile.id },
+            data: { avatarUrl: null },
+          });
+        }
       }
 
       // 3. Attributes update if provided
@@ -351,10 +359,11 @@ export class ProfilesService {
       const rawPhotos = [
         ...(data.photos || []),
         ...(data.photo ? [data.photo] : []),
-      ];
-      if (rawPhotos.length > 0) {
-        await tx.profilePhoto.deleteMany({ where: { profileId: profile.id } });
-        const uniquePhotos = Array.from(new Set(rawPhotos));
+      ].filter((url): url is string => Boolean(url && url.trim().length > 0));
+
+      await tx.profilePhoto.deleteMany({ where: { profileId: profile.id } });
+      const uniquePhotos = Array.from(new Set(rawPhotos));
+      if (uniquePhotos.length > 0) {
         await tx.profilePhoto.createMany({
           data: uniquePhotos.map((url, idx) => ({
             profileId: profile.id,
@@ -362,6 +371,15 @@ export class ProfilesService {
             isPrimary: idx === 0,
             displayOrder: idx,
           })),
+        });
+        await tx.profile.update({
+          where: { id: profile.id },
+          data: { avatarUrl: uniquePhotos[0] },
+        });
+      } else {
+        await tx.profile.update({
+          where: { id: profile.id },
+          data: { avatarUrl: null },
         });
       }
 

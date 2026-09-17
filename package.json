@@ -14,5 +14,8 @@
     "lint": "npm run lint --prefix ValoraWebApplicationDesign",
     "dev:backend": "npm run dev --prefix backend",
     "dev:frontend": "npm run dev --prefix ValoraWebApplicationDesign"
+  },
+  "dependencies": {
+    "firebase": "^12.19.0"
   }
 }

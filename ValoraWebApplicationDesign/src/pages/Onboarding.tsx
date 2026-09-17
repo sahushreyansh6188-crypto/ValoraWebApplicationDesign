@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import ValoraLogo from "../components/ValoraLogo";
+import UndiscoveredAvatar from "../components/UndiscoveredAvatar";
+import PhotoImporter from "../components/PhotoImporter";
 import { profilesApi } from "../services/api";
 
 interface OnboardingProps {
@@ -176,6 +178,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const [ageMin, setAgeMin] = useState(25);
   const [ageMax, setAgeMax] = useState(45);
   const [distance, setDistance] = useState(50);
+  const [photo, setPhoto] = useState("");
 
   const [isNameLocked, setIsNameLocked] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -193,6 +196,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         if (p.location) setLocation(p.location);
         if (p.occupation) setOccupation(p.occupation);
         if (p.bio) setBio(p.bio);
+        if (p.photo) setPhoto(p.photo);
         if (p.lifestyle && p.lifestyle.length > 0) setLifestyle(p.lifestyle);
         if (p.values && p.values.length > 0) setValues(p.values);
         if (p.communicationStyle && p.communicationStyle.length > 0) setCommStyle(p.communicationStyle);
@@ -231,8 +235,8 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           location: location || "Portland, OR",
           occupation: occupation || "Creative",
           bio: bio || "Looking for meaningful, values-aligned connections.",
-          photo: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=500&fit=crop&auto=format",
-          photos: ["https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800&h=1000&fit=crop&auto=format"],
+          photo: photo || "",
+          photos: photo ? [photo] : [],
           lifestyle,
           values,
           communicationStyle: commStyle,
@@ -243,6 +247,24 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           distanceMax: distance,
         });
         setSubmitting(false);
+        window.dispatchEvent(
+          new CustomEvent("valora:profile-updated", {
+            detail: {
+              name,
+              age: Number(age) || 28,
+              pronouns: pronouns || "they/them",
+              location: location || "Portland, OR",
+              occupation: occupation || "Creative",
+              bio: bio || "Looking for meaningful, values-aligned connections.",
+              photo: photo || "",
+              photos: photo ? [photo] : [],
+              lifestyle,
+              values,
+              communicationStyle: commStyle,
+              boundaries,
+            },
+          })
+        );
         onComplete();
       } catch (err) {
         setSubmitting(false);
@@ -441,6 +463,18 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                 />
                 <p className="text-xs text-stone text-right mt-1">{bio.length}/400</p>
               </div>
+
+              {/* Photo Import in Onboarding */}
+              <div className="pt-2 border-t border-mist">
+                <label className="block text-sm font-medium text-flint mb-2">
+                  Profile Photo <span className="text-stone font-normal">(optional — undiscovered until imported)</span>
+                </label>
+                <PhotoImporter
+                  currentPhoto={photo}
+                  name={name}
+                  onPhotoUploaded={(newPhoto) => setPhoto(newPhoto)}
+                />
+              </div>
             </div>
           )}
 
@@ -551,12 +585,13 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                 <div className="h-40 bg-cream relative">
                   <div className="absolute inset-0 bg-gradient-to-br from-brand/20 to-clay/10" />
                   <div className="absolute bottom-0 left-6 translate-y-1/2">
-                    <div className="w-20 h-20 rounded-full bg-brand-mid border-4 border-white flex items-center justify-center">
-                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                        <circle cx="12" cy="7" r="4"/>
-                      </svg>
-                    </div>
+                    <UndiscoveredAvatar
+                      photo={photo}
+                      name={name}
+                      size="xl"
+                      className="border-4 border-white rounded-full bg-white shadow-sm"
+                      showBadge={!photo}
+                    />
                   </div>
                 </div>
                 <div className="pt-14 px-6 pb-6">

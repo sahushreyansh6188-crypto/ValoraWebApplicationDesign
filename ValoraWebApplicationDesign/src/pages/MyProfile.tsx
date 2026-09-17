@@ -1,9 +1,13 @@
 import { useState, useEffect } from "react";
 import type { NavigateFn, UserProfile } from "../types";
 import { profilesApi } from "../services/api";
+import { firebaseService, auth } from "../services/firebase";
+import UndiscoveredAvatar from "../components/UndiscoveredAvatar";
+import PhotoImporter from "../components/PhotoImporter";
 
 interface MyProfileProps {
   navigate?: NavigateFn;
+  onProfileUpdate?: (profile: Partial<UserProfile>) => void;
 }
 
 const defaultProfile: UserProfile = {
@@ -14,8 +18,8 @@ const defaultProfile: UserProfile = {
   location: "",
   occupation: "",
   bio: "",
-  photo: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400&h=500&fit=crop&auto=format",
-  photos: ["https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=800&h=1000&fit=crop&auto=format"],
+  photo: "",
+  photos: [],
   lifestyle: [],
   values: [],
   communicationStyle: [],
@@ -25,7 +29,7 @@ const defaultProfile: UserProfile = {
   lastActive: "Today",
 };
 
-export default function MyProfile({ navigate }: MyProfileProps) {
+export default function MyProfile({ navigate, onProfileUpdate }: MyProfileProps) {
   const [profile, setProfile] = useState<UserProfile>(defaultProfile);
   const currentUser = profile;
   const [editing, setEditing] = useState(false);
@@ -38,6 +42,8 @@ export default function MyProfile({ navigate }: MyProfileProps) {
   const [savedLocation, setSavedLocation] = useState("");
   const [savedPronouns, setSavedPronouns] = useState("");
   const [saved, setSaved] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [photoSaving, setPhotoSaving] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -52,25 +58,69 @@ export default function MyProfile({ navigate }: MyProfileProps) {
         setSavedOccupation(data.occupation || "");
         setSavedLocation(data.location || "");
         setSavedPronouns(data.pronouns || "");
+        onProfileUpdate?.(data);
+        window.dispatchEvent(new CustomEvent("valora:profile-updated", { detail: data }));
       }
     }).catch(() => {});
     return () => { active = false; };
-  }, []);
+  }, [onProfileUpdate]);
 
   const save = async () => {
     setSavedBio(bio);
     setSavedOccupation(occupation);
     setSavedLocation(location);
     setSavedPronouns(pronouns);
-    setProfile((prev) => ({ ...prev, bio, occupation, location, pronouns }));
+    const updated = { ...profile, bio, occupation, location, pronouns };
+    setProfile(updated);
+    onProfileUpdate?.(updated);
+    window.dispatchEvent(new CustomEvent("valora:profile-updated", { detail: updated }));
     setEditing(false);
     setSaved(true);
     try {
       await profilesApi.updateMe({ bio, occupation, location, pronouns });
+      const currentUid = auth.currentUser?.uid || profile.id;
+      if (currentUid) {
+        await firebaseService.updateProfile(currentUid, { bio, occupation, location, pronouns });
+      }
     } catch (err) {
       console.warn("Failed updating profile via API:", err);
     }
     setTimeout(() => setSaved(false), 2500);
+  };
+
+  const handlePhotoUploaded = async (photoUrl: string) => {
+    setPhotoSaving(true);
+    setPhotoError(null);
+    const updated = {
+      ...profile,
+      photo: photoUrl,
+      photos: photoUrl ? [photoUrl] : [],
+    };
+    setProfile(updated);
+    onProfileUpdate?.(updated);
+    window.dispatchEvent(new CustomEvent("valora:profile-updated", { detail: updated }));
+
+    try {
+      const persisted = await profilesApi.uploadPhoto(photoUrl);
+      if (persisted) {
+        setProfile(persisted);
+        onProfileUpdate?.(persisted);
+      }
+      const currentUid = auth.currentUser?.uid || profile.id;
+      if (currentUid) {
+        await firebaseService.updateProfile(currentUid, {
+          photo: photoUrl,
+          photos: photoUrl ? [photoUrl] : [],
+        });
+      }
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      console.error("Failed persisting photo to database:", err);
+      setPhotoError("Could not save photo to database. Please try again.");
+    } finally {
+      setPhotoSaving(false);
+    }
   };
 
   const cancel = () => {
@@ -82,7 +132,7 @@ export default function MyProfile({ navigate }: MyProfileProps) {
   };
 
   const completeness = [
-    { label: "Photos", done: currentUser.photos.length > 0 },
+    { label: "Photos", done: Boolean(currentUser.photo || currentUser.photos.length > 0) },
     { label: "Bio", done: bio.length > 20 },
     { label: "Values", done: currentUser.values.length >= 3 },
     { label: "Lifestyle", done: currentUser.lifestyle.length >= 1 },
@@ -154,18 +204,40 @@ export default function MyProfile({ navigate }: MyProfileProps) {
         <div className="bg-white border border-mist rounded-2xl overflow-hidden">
           {/* Cover + avatar */}
           <div className="h-36 bg-gradient-to-br from-brand-light to-cream relative">
-            <div className="absolute -bottom-8 left-6">
+            <div className="absolute -bottom-9 left-6">
               <div className="relative">
-                <img
-                  src={currentUser.photo || "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400&h=500&fit=crop&auto=format"}
-                  alt="Your profile photo"
-                  className="w-20 h-20 rounded-full object-cover border-4 border-white"
+                <UndiscoveredAvatar
+                  photo={currentUser.photo}
+                  name={currentUser.name}
+                  size="xl"
+                  className="border-4 border-white rounded-full bg-white shadow-sm"
+                  showBadge={!currentUser.photo}
                 />
               </div>
             </div>
           </div>
 
           <div className="pt-12 px-6 pb-6">
+            {/* Import photo prompt block */}
+            <div className="mb-6">
+              <PhotoImporter
+                currentPhoto={currentUser.photo}
+                name={currentUser.name}
+                onPhotoUploaded={handlePhotoUploaded}
+              />
+              {photoSaving && (
+                <p className="text-xs text-brand mt-2 flex items-center gap-1.5 animate-pulse">
+                  <span className="w-2 h-2 rounded-full bg-brand" />
+                  Saving photo to database...
+                </p>
+              )}
+              {photoError && (
+                <p className="text-xs text-danger mt-2 bg-danger/10 border border-danger/20 px-3 py-2 rounded-lg">
+                  {photoError}
+                </p>
+              )}
+            </div>
+
             <div className="flex items-start justify-between">
               <div>
                 <div className="flex items-center gap-2">

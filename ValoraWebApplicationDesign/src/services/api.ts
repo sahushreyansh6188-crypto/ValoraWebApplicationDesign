@@ -1,9 +1,12 @@
 import type { UserProfile, Conversation, Message, Notification } from "../types";
 
-const rawApiUrl =
+const envApiUrl =
   (import.meta.env.VITE_API_URL as string) ||
   (import.meta.env.VITE_API_BASE_URL as string) ||
   "";
+
+// If VITE_API_URL points to the suspended external Render service or is blank, use relative local backend proxy
+const rawApiUrl = envApiUrl.includes("valora-backend.onrender.com") ? "" : envApiUrl;
 
 const API_BASE = rawApiUrl
   ? (rawApiUrl.endsWith("/api/v1") ? rawApiUrl : `${rawApiUrl.replace(/\/$/, "")}/api/v1`)
@@ -113,13 +116,22 @@ async function request<T>(
         }
       }
       const errJson = await res.json().catch(() => null);
-      const errMsg = errJson?.error?.message || `HTTP ${res.status} ${res.statusText}`;
+      let errMsg = errJson?.error?.message || `HTTP ${res.status} ${res.statusText}`;
+      if (errJson?.error?.details && Array.isArray(errJson.error.details) && errJson.error.details.length > 0) {
+        const firstDetail = errJson.error.details[0];
+        if (typeof firstDetail === "object" && firstDetail?.message) {
+          errMsg = firstDetail.message;
+        }
+      }
       throw new Error(errMsg);
     }
 
     const json: ApiResponse<T> = await res.json();
     return json.data;
   } catch (err) {
+    if ((err as Error)?.message === "Failed to fetch") {
+      throw new Error("Unable to connect to the server. Please check your connection and try again.");
+    }
     throw err;
   }
 }
@@ -205,6 +217,13 @@ export const profilesApi = {
     return request<UserProfile>("/profiles/onboarding", {
       method: "POST",
       body: JSON.stringify(data),
+    });
+  },
+
+  async uploadPhoto(photo: string): Promise<UserProfile> {
+    return request<UserProfile>("/profiles/me", {
+      method: "PATCH",
+      body: JSON.stringify({ photo, photos: photo ? [photo] : [] }),
     });
   },
 };
@@ -345,6 +364,18 @@ export const adminApi = {
       method: "PATCH",
       body: JSON.stringify({ status, notes }),
     });
+  },
+
+  async getModerationFlags(): Promise<any[]> {
+    return request<any[]>("/admin/moderation/flags", { method: "GET" });
+  },
+
+  async getAuditLogs(): Promise<any[]> {
+    return request<any[]>("/admin/audit-logs", { method: "GET" });
+  },
+
+  async getSubscriptions(): Promise<any> {
+    return request<any>("/admin/subscriptions", { method: "GET" });
   },
 };
 

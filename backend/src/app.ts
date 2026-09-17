@@ -31,6 +31,7 @@ export function buildApp(): FastifyInstance {
     },
     genReqId: () => `req_${uuidv4().replace(/-/g, '').slice(0, 16)}`,
     trustProxy: true,
+    bodyLimit: 10 * 1024 * 1024, // 10MB limit for secure image uploads
   });
 
   // 1. Plugins

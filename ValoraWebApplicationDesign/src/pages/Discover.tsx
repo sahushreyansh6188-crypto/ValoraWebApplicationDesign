@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import type { UserProfile } from "../types";
 import { discoveryApi, profilesApi } from "../services/api";
+import { firebaseService } from "../services/firebase";
+import UndiscoveredAvatar from "../components/UndiscoveredAvatar";
 
 const lifestyleFilters = ["All", "alcohol-free", "vegan", "zero-waste", "mindfulness practice", "outdoor lifestyle", "plant-based"];
 
@@ -31,14 +33,21 @@ function ProfileCard({ profile, onClick }: { profile: UserProfile; onClick: () =
       onKeyDown={(e) => e.key === "Enter" && onClick()}
     >
       {/* Photo */}
-      <div className="relative h-60 bg-cream">
-        <img
-          src={profile.photo}
-          alt={`${profile.name}, ${profile.age}`}
-          className="w-full h-full object-cover"
-          loading="lazy"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent" />
+      <div className="relative h-60 bg-cream overflow-hidden">
+        {profile.photo ? (
+          <img
+            src={profile.photo}
+            alt={`${profile.name}, ${profile.age}`}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-sand/80 via-cream to-ivory">
+            <UndiscoveredAvatar photo="" name={profile.name} size="xl" />
+            <span className="text-[11px] font-medium text-stone mt-2 tracking-wide uppercase">Photo Undiscovered</span>
+          </div>
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent pointer-events-none" />
         <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm rounded-full px-2.5 py-1 text-xs font-semibold text-brand">
           {profile.compatibilityScore}% aligned
         </div>
@@ -136,19 +145,28 @@ function ProfileDetail({ profile, onClose, onConnect, currentUser }: { profile: 
     >
       <div className="bg-white w-full md:max-w-lg md:rounded-3xl rounded-t-3xl max-h-[92vh] overflow-y-auto">
         {/* Photo header */}
-        <div className="relative h-72 bg-cream">
-          <img src={profile.photos[0]} alt={`${profile.name}`} className="w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+        <div className="relative h-72 bg-cream overflow-hidden">
+          {profile.photos && profile.photos[0] ? (
+            <img src={profile.photos[0]} alt={`${profile.name}`} className="w-full h-full object-cover" />
+          ) : profile.photo ? (
+            <img src={profile.photo} alt={`${profile.name}`} className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-sand/80 via-cream to-ivory">
+              <UndiscoveredAvatar photo="" name={profile.name} size="xl" />
+              <span className="text-xs font-medium text-stone mt-2 uppercase tracking-wide">Photo Undiscovered</span>
+            </div>
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
           <button
             onClick={onClose}
             aria-label="Close profile"
-            className="absolute top-4 left-4 w-9 h-9 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white transition-colors"
+            className="absolute top-4 left-4 w-9 h-9 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white transition-colors z-10"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M15 18l-6-6 6-6"/>
             </svg>
           </button>
-          <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm rounded-full px-3 py-1 text-sm font-semibold text-brand">
+          <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm rounded-full px-3 py-1 text-sm font-semibold text-brand z-10">
             {profile.compatibilityScore}% aligned
           </div>
           <div className="absolute bottom-5 left-5 text-white">
@@ -277,32 +295,59 @@ export default function Discover() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [profileList, setProfileList] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const fetchFeed = (silent = false) => {
+    if (!silent) setLoading(true);
+    else setRefreshing(true);
+    setError(null);
+    return Promise.all([
+      discoveryApi.getFeed({ lifestyle: activeFilter }).catch(() => []),
+      firebaseService.getDiscoveryProfiles(currentUser?.id).catch(() => []),
+    ])
+      .then(([apiData, fbData]) => {
+        // Merge profiles by ID, deduplicating
+        const map = new Map<string, UserProfile>();
+        (apiData || []).forEach((p) => map.set(p.id, p));
+        (fbData || []).forEach((p) => {
+          if (!map.has(p.id)) map.set(p.id, p);
+        });
+        setProfileList(Array.from(map.values()));
+      })
+      .catch((err) => {
+        if (!silent) setError((err as Error)?.message || "Unable to load profiles.");
+      })
+      .finally(() => {
+        setLoading(false);
+        setRefreshing(false);
+      });
+  };
 
   useEffect(() => {
     let active = true;
-    profilesApi.getMe().then((u) => {
-      if (active && u) setCurrentUser(u);
-    }).catch(() => {});
-    return () => { active = false; };
+    profilesApi
+      .getMe()
+      .then((u) => {
+        if (active && u) setCurrentUser(u);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setError(null);
-    discoveryApi.getFeed({ lifestyle: activeFilter }).then((data) => {
-      if (active) {
-        setProfileList(data || []);
-        setLoading(false);
-      }
-    }).catch((err) => {
-      if (active) {
-        setError((err as Error)?.message || "Unable to load profiles.");
-        setLoading(false);
-      }
-    });
-    return () => { active = false; };
+    fetchFeed(false);
+
+    // Real-time polling: Refresh feed every 10 seconds to discover newly signed-up users instantly
+    const interval = setInterval(() => {
+      fetchFeed(true);
+    }, 10000);
+
+    return () => {
+      clearInterval(interval);
+    };
   }, [activeFilter]);
 
   const filtered = activeFilter === "All"
@@ -326,8 +371,37 @@ export default function Discover() {
       {/* Page header */}
       <div className="sticky top-0 z-30 bg-ivory/95 backdrop-blur-sm border-b border-mist px-6 py-4">
         <div className="flex items-center justify-between mb-4">
-          <h1 className="font-display text-2xl text-charcoal">Discover</h1>
-          <span className="text-xs text-stone">{filtered.length} people near your values</span>
+          <div className="flex items-center gap-3">
+            <h1 className="font-display text-2xl text-charcoal">Discover</h1>
+            <span className="flex items-center gap-1.5 text-[11px] font-medium text-brand bg-brand-light/60 px-2.5 py-0.5 rounded-full border border-brand/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" />
+              Live
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => fetchFeed(true)}
+              disabled={refreshing}
+              className="text-xs text-stone hover:text-charcoal px-2.5 py-1 rounded-full border border-mist bg-white flex items-center gap-1.5 transition-colors"
+              title="Refresh live profile feed"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={refreshing ? "animate-spin text-brand" : ""}
+              >
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+              </svg>
+              <span>{refreshing ? "Updating..." : "Refresh"}</span>
+            </button>
+            <span className="text-xs text-stone">{filtered.length} {filtered.length === 1 ? "profile" : "profiles"} available</span>
+          </div>
         </div>
         {/* Filter bar */}
         <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none" role="toolbar" aria-label="Filter by lifestyle">

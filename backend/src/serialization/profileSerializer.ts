@@ -24,7 +24,7 @@ export function serializeProfile(
   const photos = (profile.photos || []).map((p: any) => p.photoUrl || p);
   const primaryPhoto =
     profile.avatarUrl ||
-    (photos.length > 0 ? photos[0] : 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400&h=500&fit=crop&auto=format');
+    (photos.length > 0 ? photos[0] : '');
 
   const attributes = profile.attributes || [];
   const lifestyle = attributes
@@ -60,7 +60,7 @@ export function serializeProfile(
     occupation: profile.occupation || '',
     bio: profile.bio || '',
     photo: primaryPhoto,
-    photos: photos.length > 0 ? photos : [primaryPhoto],
+    photos: photos.length > 0 ? photos : (primaryPhoto ? [primaryPhoto] : []),
     lifestyle,
     values,
     communicationStyle,

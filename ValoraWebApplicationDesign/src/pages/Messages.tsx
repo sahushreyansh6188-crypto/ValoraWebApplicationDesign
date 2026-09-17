@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import type { Conversation, Message } from "../types";
 import { messagingApi, connectChatWebSocket } from "../services/api";
+import UndiscoveredAvatar from "../components/UndiscoveredAvatar";
 
 const starters = [
   "I noticed we're both interested in zero-waste — how long have you been living that way?",
@@ -128,7 +129,7 @@ function ConversationPane({
             <path d="M15 18l-6-6 6-6"/>
           </svg>
         </button>
-        <img src={conv.profile.photo} alt={conv.profile.name} className="w-9 h-9 rounded-full object-cover border border-mist" />
+        <UndiscoveredAvatar photo={conv.profile.photo} name={conv.profile.name} size="sm" />
         <div className="flex-1">
           <p className="text-sm font-semibold text-charcoal">{conv.profile.name}</p>
           <p className="text-xs text-stone">
@@ -265,10 +266,10 @@ export default function Messages() {
                   }`}
                 >
                   <div className="relative shrink-0">
-                    <img
-                      src={conv.profile.photo}
-                      alt={conv.profile.name}
-                      className="w-11 h-11 rounded-full object-cover border border-mist"
+                    <UndiscoveredAvatar
+                      photo={conv.profile.photo}
+                      name={conv.profile.name}
+                      size="md"
                     />
                     {conv.isNew && (
                       <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-clay rounded-full border-2 border-white" aria-label="Unread" />

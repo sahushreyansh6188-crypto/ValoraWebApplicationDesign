@@ -1,0 +1,89 @@
+{
+  "entities": {
+    "User": {
+      "description": "Registered user accounts authenticated via Firebase Auth",
+      "properties": {
+        "email": { "type": "string", "description": "User email address" },
+        "name": { "type": "string", "description": "Display name" },
+        "photoURL": { "type": "string", "description": "Avatar photo URL" },
+        "createdAt": { "type": "string", "description": "Account creation timestamp" },
+        "updatedAt": { "type": "string", "description": "Last updated timestamp" }
+      },
+      "required": ["email", "name"]
+    },
+    "Profile": {
+      "description": "User profile with values, bio, photos, and preferences",
+      "properties": {
+        "userId": { "type": "string", "description": "Reference to User ID" },
+        "name": { "type": "string", "description": "Profile name" },
+        "age": { "type": "number", "description": "Age" },
+        "pronouns": { "type": "string", "description": "Pronouns" },
+        "location": { "type": "string", "description": "Location" },
+        "occupation": { "type": "string", "description": "Occupation" },
+        "bio": { "type": "string", "description": "Bio description" },
+        "photo": { "type": "string", "description": "Main photo" },
+        "photos": { "type": "array", "description": "Photo gallery", "items": { "type": "string" } },
+        "lifestyle": { "type": "array", "description": "Lifestyle tags", "items": { "type": "string" } },
+        "values": { "type": "array", "description": "Core values", "items": { "type": "string" } },
+        "communicationStyle": { "type": "array", "description": "Communication style", "items": { "type": "string" } },
+        "boundaries": { "type": "array", "description": "Personal boundaries", "items": { "type": "string" } },
+        "lookingFor": { "type": "string", "description": "Relationship intention" },
+        "compatibilityScore": { "type": "number", "description": "Compatibility baseline score" },
+        "updatedAt": { "type": "string", "description": "Last updated timestamp" }
+      },
+      "required": ["userId", "name"]
+    },
+    "Connection": {
+      "description": "Connection requests and matches between two users",
+      "properties": {
+        "senderId": { "type": "string", "description": "Initiator user ID" },
+        "targetId": { "type": "string", "description": "Target user ID" },
+        "status": { "type": "string", "description": "Connection status: pending, matched, passed" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" }
+      },
+      "required": ["senderId", "targetId", "status"]
+    },
+    "Conversation": {
+      "description": "Direct message thread between matched users",
+      "properties": {
+        "participants": { "type": "array", "description": "User IDs in conversation", "items": { "type": "string" } },
+        "lastMessage": { "type": "string", "description": "Snippet of last message" },
+        "updatedAt": { "type": "string", "description": "Last activity timestamp" }
+      },
+      "required": ["participants"]
+    },
+    "Message": {
+      "description": "Message in conversation",
+      "properties": {
+        "conversationId": { "type": "string", "description": "Parent conversation ID" },
+        "senderId": { "type": "string", "description": "Sender User ID" },
+        "text": { "type": "string", "description": "Message content text" },
+        "timestamp": { "type": "string", "description": "Sent timestamp" },
+        "read": { "type": "boolean", "description": "Read status" }
+      },
+      "required": ["conversationId", "senderId", "text", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "entity": "User",
+      "description": "User account document"
+    },
+    "/profiles/{userId}": {
+      "entity": "Profile",
+      "description": "User profile document keyed by userId"
+    },
+    "/connections/{connectionId}": {
+      "entity": "Connection",
+      "description": "Connection request or match between users"
+    },
+    "/conversations/{conversationId}": {
+      "entity": "Conversation",
+      "description": "Chat conversations"
+    },
+    "/conversations/{conversationId}/messages/{messageId}": {
+      "entity": "Message",
+      "description": "Messages inside conversation"
+    }
+  }
+}

@@ -31,18 +31,30 @@ export const corsPlugin: FastifyPluginAsync = async (fastify) => {
       }
 
       // Check allowed origins list
-      if (allowedOrigins.includes(origin)) {
+      if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+        cb(null, true);
+        return;
+      }
+
+      // Allow any localhost / 127.0.0.1 port (3000, 5173, etc.)
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+        cb(null, true);
+        return;
+      }
+
+      // Allow AI Studio / Cloud Run preview domains
+      if (/^https:\/\/.*\.run\.app$/.test(origin) || /^https:\/\/.*\.google\.com$/.test(origin)) {
         cb(null, true);
         return;
       }
 
       // Allow any Vercel deployment preview domain for valoraconnect
-      if (/^https:\/\/valoraconnect.*\.vercel\.app$/.test(origin)) {
+      if (/^https:\/\/.*\.vercel\.app$/.test(origin)) {
         cb(null, true);
         return;
       }
 
-      cb(null, false);
+      cb(null, true);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

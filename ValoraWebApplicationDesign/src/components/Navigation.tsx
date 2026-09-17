@@ -1,12 +1,15 @@
-import type { Screen, NavigateFn } from "../types";
-import { currentUser } from "../data/mock";
+import { useState, useEffect } from "react";
+import type { Screen, NavigateFn, UserProfile } from "../types";
+import { profilesApi } from "../services/api";
 import ValoraLogo, { ValoraIcon } from "./ValoraLogo";
+import UndiscoveredAvatar from "./UndiscoveredAvatar";
 
 interface NavProps {
   screen: Screen;
   navigate: NavigateFn;
   unreadMessages?: number;
   unreadNotifications?: number;
+  userProfile?: UserProfile | null;
 }
 
 const IconCompass = () => (
@@ -52,12 +55,58 @@ const navItems = [
   { id: "my-profile" as Screen, label: "Profile", icon: <IconUser /> },
 ];
 
-export default function Navigation({ screen, navigate, unreadMessages = 2, unreadNotifications = 3 }: NavProps) {
+export default function Navigation({
+  screen,
+  navigate,
+  unreadMessages = 2,
+  unreadNotifications = 3,
+  userProfile,
+}: NavProps) {
+  const [profile, setProfile] = useState<UserProfile | null>(userProfile || null);
+
+  useEffect(() => {
+    if (userProfile) {
+      setProfile(userProfile);
+    }
+  }, [userProfile]);
+
+  useEffect(() => {
+    let active = true;
+
+    // Fetch me if not yet populated
+    profilesApi
+      .getMe()
+      .then((data) => {
+        if (active && data && data.name) {
+          setProfile(data);
+        }
+      })
+      .catch(() => {});
+
+    // Listen for cross-page profile updates (e.g. from MyProfile or Onboarding)
+    const handleProfileUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<Partial<UserProfile>>;
+      if (customEvent.detail) {
+        setProfile((prev) => (prev ? { ...prev, ...customEvent.detail } : (customEvent.detail as UserProfile)));
+      }
+    };
+
+    window.addEventListener("valora:profile-updated", handleProfileUpdate);
+    return () => {
+      active = false;
+      window.removeEventListener("valora:profile-updated", handleProfileUpdate);
+    };
+  }, []);
+
   const getBadge = (id: Screen) => {
     if (id === "messages") return unreadMessages;
     if (id === "notifications") return unreadNotifications;
     return 0;
   };
+
+  const displayName = profile?.name || "Member";
+  const displayPronouns = profile?.pronouns || "";
+  const displayPhoto = profile?.photo || (profile?.photos && profile.photos[0]) || "";
 
   return (
     <>
@@ -113,16 +162,31 @@ export default function Navigation({ screen, navigate, unreadMessages = 2, unrea
           </button>
           <button
             onClick={() => navigate("my-profile")}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-cream transition-colors mt-1"
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors mt-1 ${
+              screen === "my-profile"
+                ? "bg-brand-light text-brand"
+                : "hover:bg-cream"
+            }`}
           >
-            <img
-              src={currentUser.photo}
-              alt="Your profile"
-              className="w-8 h-8 rounded-full object-cover border border-mist"
+            <UndiscoveredAvatar
+              photo={displayPhoto}
+              name={displayName}
+              size="sm"
+              showBadge={!displayPhoto}
             />
-            <div className="text-left">
-              <div className="text-sm font-medium text-charcoal leading-tight">{currentUser.name}</div>
-              <div className="text-xs text-stone leading-tight">{currentUser.pronouns}</div>
+            <div className="text-left overflow-hidden min-w-0 flex-1">
+              <div className="text-sm font-medium text-charcoal leading-tight truncate">
+                {displayName}
+              </div>
+              {displayPronouns ? (
+                <div className="text-xs text-stone leading-tight truncate">
+                  {displayPronouns}
+                </div>
+              ) : !displayPhoto ? (
+                <div className="text-[11px] text-clay leading-tight truncate font-medium">
+                  + Add photo
+                </div>
+              ) : null}
             </div>
           </button>
         </div>

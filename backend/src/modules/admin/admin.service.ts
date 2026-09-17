@@ -5,18 +5,24 @@ export class AdminService {
   constructor(private prisma: PrismaClient) {}
 
   async getOverview() {
-    const totalUsersCount = await this.prisma.user.count({ where: { accountStatus: { not: 'deleted' } } });
-    const pendingReportsCount = await this.prisma.report.count({ where: { status: 'open' } });
-    const activeSubsCount = await this.prisma.subscription.count({ where: { status: 'active', plan: { not: 'free' } } });
-    const totalMatchesCount = await this.prisma.match.count({ where: { isActive: true } });
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const [totalUsersCount, pendingReportsCount, activeSubsCount, totalMatchesCount, newTodayCount] = await Promise.all([
+      this.prisma.user.count({ where: { accountStatus: { not: 'deleted' } } }),
+      this.prisma.report.count({ where: { status: 'open' } }),
+      this.prisma.subscription.count({ where: { status: 'active', plan: { not: 'free' } } }),
+      this.prisma.match.count({ where: { isActive: true } }),
+      this.prisma.user.count({ where: { createdAt: { gte: today }, accountStatus: { not: 'deleted' } } }),
+    ]);
 
     const statCards = [
-      { label: 'Total users', value: totalUsersCount.toLocaleString(), change: '+234 this week', up: true },
-      { label: 'Monthly active', value: Math.round(totalUsersCount * 0.65).toLocaleString(), change: '+12% vs last month', up: true },
-      { label: 'New today', value: '47', change: '-3 vs yesterday', up: false },
-      { label: 'Pending reports', value: pendingReportsCount.toString(), change: '3 critical', up: false },
-      { label: 'Active subscriptions', value: activeSubsCount.toLocaleString(), change: '+89 this week', up: true },
-      { label: 'Matches today', value: totalMatchesCount.toString(), change: '+22% vs average', up: true },
+      { label: 'Total users', value: totalUsersCount.toLocaleString(), change: totalUsersCount > 0 ? `${totalUsersCount} active` : '0 registered', up: true },
+      { label: 'Monthly active', value: totalUsersCount.toLocaleString(), change: 'Live count', up: true },
+      { label: 'New today', value: newTodayCount.toString(), change: `${newTodayCount} new today`, up: newTodayCount > 0 },
+      { label: 'Pending reports', value: pendingReportsCount.toString(), change: pendingReportsCount > 0 ? `${pendingReportsCount} open` : 'All clear', up: pendingReportsCount === 0 },
+      { label: 'Active subscriptions', value: activeSubsCount.toLocaleString(), change: `${activeSubsCount} paid`, up: true },
+      { label: 'Matches today', value: totalMatchesCount.toString(), change: `${totalMatchesCount} mutual`, up: true },
     ];
 
     return {
@@ -195,9 +201,9 @@ export class AdminService {
     ]);
 
     return [
-      { label: 'Profiles with no photo after 7 days', count: noPhotosCount || 23 },
-      { label: 'Accounts with 3+ reports', count: multiReportCount || 4 },
-      { label: 'Dormant accounts (90+ days)', count: dormantCount || 142 },
+      { label: 'Profiles with no photo after 7 days', count: noPhotosCount },
+      { label: 'Accounts with 3+ reports', count: multiReportCount },
+      { label: 'Dormant accounts (90+ days)', count: dormantCount },
     ];
   }
 
@@ -229,30 +235,30 @@ export class AdminService {
       this.prisma.subscription.count({ where: { plan: 'annual' } }),
     ]);
 
-    const total = freeCount + connectCount + annualCount || 1;
+    const total = freeCount + connectCount + annualCount;
     const mrr = connectCount * 14 + Math.round((annualCount * 99) / 12);
 
     return {
       mrr: `$${mrr.toLocaleString()}`,
-      mrrGrowth: '↑ 14% vs last month',
+      mrrGrowth: total > 0 ? 'Live database tally' : '0 subscriptions',
       tiers: [
         {
           plan: 'Free',
-          count: freeCount || 9426,
+          count: freeCount,
           revenue: '$0',
-          pct: Math.round(((freeCount || 9426) / total) * 100),
+          pct: total > 0 ? Math.round((freeCount / total) * 100) : 0,
         },
         {
           plan: 'Connect (monthly)',
-          count: connectCount || 2214,
-          revenue: `$${((connectCount || 2214) * 14).toLocaleString()}/mo`,
-          pct: Math.round(((connectCount || 2214) / total) * 100),
+          count: connectCount,
+          revenue: `$${(connectCount * 14).toLocaleString()}/mo`,
+          pct: total > 0 ? Math.round((connectCount / total) * 100) : 0,
         },
         {
           plan: 'Annual',
-          count: annualCount || 1207,
-          revenue: `$${((annualCount || 1207) * 99).toLocaleString()}/yr`,
-          pct: Math.round(((annualCount || 1207) / total) * 100),
+          count: annualCount,
+          revenue: `$${(annualCount * 99).toLocaleString()}/yr`,
+          pct: total > 0 ? Math.round((annualCount / total) * 100) : 0,
         },
       ],
     };
