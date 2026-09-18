@@ -169,9 +169,102 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.post('/google', async (request, reply) => {
-    const { code } = z.object({ code: z.string() }).parse(request.body);
-    const result = await authService.googleAuth(code);
+    const body = z
+      .object({
+        code: z.string().optional(),
+        email: z.string().email().optional(),
+        name: z.string().optional(),
+        photoUrl: z.string().optional(),
+      })
+      .parse(request.body || {});
+
+    const result = await authService.googleAuth(body);
+
+    const accessToken = fastify.jwt.sign(
+      {
+        sub: result.user.id,
+        email: result.user.email,
+        role: result.user.role,
+        isVerified: result.user.isVerified,
+        hasProfile: result.user.hasProfile,
+      },
+      { expiresIn: '15m' }
+    );
+
+    const refreshToken = fastify.jwt.sign(
+      { sub: result.user.id, type: 'refresh' },
+      { expiresIn: '30d' }
+    );
+
+    reply.setCookie('valora_refresh_token', refreshToken, {
+      path: '/api/v1/auth/refresh',
+      httpOnly: true,
+      secure: env.NODE_ENV === 'production',
+      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 30 * 24 * 60 * 60,
+    });
+
+    return sendSuccess(reply, {
+      accessToken,
+      refreshToken,
+      user: result.user,
+    });
+  });
+
+  fastify.post('/otp/send', async (request, reply) => {
+    const { email, purpose } = z
+      .object({
+        email: z.string().email('Enter a valid email address'),
+        purpose: z.enum(['signup', 'login']).default('signup'),
+      })
+      .parse(request.body);
+
+    const result = await authService.sendOtp(email, purpose);
     return sendSuccess(reply, result);
+  });
+
+  fastify.post('/otp/verify', async (request, reply) => {
+    const body = z
+      .object({
+        email: z.string().email('Enter a valid email address'),
+        code: z.string().min(4, 'Code must be at least 4 characters'),
+        purpose: z.enum(['signup', 'login']).default('signup'),
+        name: z.string().optional(),
+        password: z.string().optional(),
+      })
+      .parse(request.body);
+
+    const result = await authService.verifyOtp(body);
+
+    const accessToken = fastify.jwt.sign(
+      {
+        sub: result.user.id,
+        email: result.user.email,
+        role: result.user.role,
+        isVerified: result.user.isVerified,
+        hasProfile: result.user.hasProfile,
+      },
+      { expiresIn: '15m' }
+    );
+
+    const refreshToken = fastify.jwt.sign(
+      { sub: result.user.id, type: 'refresh' },
+      { expiresIn: '30d' }
+    );
+
+    reply.setCookie('valora_refresh_token', refreshToken, {
+      path: '/api/v1/auth/refresh',
+      httpOnly: true,
+      secure: env.NODE_ENV === 'production',
+      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 30 * 24 * 60 * 60,
+    });
+
+    return sendSuccess(reply, {
+      accessToken,
+      refreshToken,
+      user: result.user,
+    });
   });
 };
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import type { NavigateFn, AuthMode } from "../types";
 import ValoraLogo from "../components/ValoraLogo";
 import { authApi } from "../services/api";
@@ -69,9 +69,24 @@ function Input({
 }
 
 /* ─── Login ─── */
-function LoginForm({ onLogin, switchTo }: { onLogin: () => void; switchTo: (m: AuthMode) => void }) {
+function LoginForm({
+  onLogin,
+  switchTo,
+  onInitiateOtp,
+}: {
+  onLogin: () => void;
+  switchTo: (m: AuthMode) => void;
+  onInitiateOtp: (params: {
+    email: string;
+    purpose: "login";
+    password?: string;
+    devOtp?: string;
+  }) => void;
+}) {
+  const [authMethod, setAuthMethod] = useState<"password" | "otp">("password");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [requireTwoFactor, setRequireTwoFactor] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
@@ -79,7 +94,7 @@ function LoginForm({ onLogin, switchTo }: { onLogin: () => void; switchTo: (m: A
     const e: Record<string, string> = {};
     if (!email) e.email = "Email is required";
     else if (!/\S+@\S+\.\S+/.test(email)) e.email = "Enter a valid email address";
-    if (!password) e.password = "Password is required";
+    if (authMethod === "password" && !password) e.password = "Password is required";
     return e;
   };
 
@@ -89,24 +104,18 @@ function LoginForm({ onLogin, switchTo }: { onLogin: () => void; switchTo: (m: A
     setGoogleLoading(true);
     setErrors({});
     try {
-      const { user, profile } = await firebaseService.signInWithGoogle();
-      // Store standard session token and user info
-      if (user.email) {
-        // Also register/login in backend service if available
-        try {
-          await authApi.signup({
-            email: user.email,
-            password: "firebase_oauth_session",
-            name: user.displayName || "Valora Member",
-            termsAccepted: true,
-          }).catch(async () => {
-            await authApi.login(user.email!, "firebase_oauth_session");
-          });
-        } catch {}
+      const { user } = await firebaseService.signInWithGoogle(email || undefined);
+      if (user?.email) {
+        await authApi.googleAuth({
+          email: user.email,
+          name: user.displayName || user.email.split("@")[0],
+          photoUrl: user.photoURL || undefined,
+        });
       }
       onLogin();
     } catch (err: any) {
-      setErrors({ form: err.message || "Failed to sign in with Google" });
+      console.error("Google sign in error:", err);
+      setErrors({ form: err?.message || "Failed to sign in with Google" });
     } finally {
       setGoogleLoading(false);
     }
@@ -117,12 +126,45 @@ function LoginForm({ onLogin, switchTo }: { onLogin: () => void; switchTo: (m: A
     const e = validate();
     if (Object.keys(e).length) { setErrors(e); return; }
     setLoading(true);
+
     try {
+      if (authMethod === "otp") {
+        // Dispatches OTP to email and switches to verification
+        const res = await authApi.sendOtp(email, "login");
+        onInitiateOtp({
+          email,
+          purpose: "login",
+          devOtp: res.devOtp,
+        });
+        return;
+      }
+
+      if (requireTwoFactor) {
+        // First verify password or credentials, then dispatch OTP challenge
+        const res = await authApi.sendOtp(email, "login");
+        onInitiateOtp({
+          email,
+          purpose: "login",
+          password,
+          devOtp: res.devOtp,
+        });
+        return;
+      }
+
       await authApi.login(email, password);
       // Synchronize with Firebase Auth in background
       firebaseService.signInWithEmail(email, password).catch(() => {});
       onLogin();
     } catch (err) {
+      if (authMethod === "password") {
+        try {
+          const res = await firebaseService.signInWithEmail(email, password);
+          if (res && res.user) {
+            onLogin();
+            return;
+          }
+        } catch {}
+      }
       setErrors({ form: (err as Error).message });
     } finally {
       setLoading(false);
@@ -130,57 +172,196 @@ function LoginForm({ onLogin, switchTo }: { onLogin: () => void; switchTo: (m: A
   };
 
   return (
-    <form onSubmit={submit} noValidate className="space-y-5" aria-label="Sign in form">
-      {errors.form && (
-        <div className="bg-danger/10 border border-danger/30 rounded-xl p-3 text-xs text-danger">
-          {errors.form}
-        </div>
-      )}
-      <div>
-        <Label required>Email</Label>
-        <Input id="email" type="email" placeholder="you@example.com" value={email} onChange={setEmail} error={errors.email} autoComplete="email" />
-      </div>
-      <div>
-        <div className="flex items-center justify-between mb-1.5">
-          <Label required>Password</Label>
-          <button type="button" onClick={() => switchTo("reset")} className="text-xs text-clay hover:underline">
-            Forgot password?
-          </button>
-        </div>
-        <Input id="password" type="password" placeholder="••••••••" value={password} onChange={setPassword} error={errors.password} autoComplete="current-password" />
-      </div>
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full bg-brand text-ivory py-3.5 rounded-full text-sm font-medium hover:bg-brand-hover transition-colors disabled:opacity-60"
-      >
-        {loading ? "Signing in…" : "Sign in"}
-      </button>
-      <p className="text-center text-sm text-stone">
-        No account?{" "}
-        <button type="button" onClick={() => switchTo("signup")} className="text-brand font-medium hover:underline">
-          Create one
+    <div className="space-y-5">
+      {/* Sign-in Method Tabs */}
+      <div className="grid grid-cols-2 p-1 bg-sand/60 rounded-xl border border-mist text-xs font-medium">
+        <button
+          type="button"
+          onClick={() => {
+            setAuthMethod("password");
+            setErrors({});
+          }}
+          className={`py-2 rounded-lg transition-all text-center ${
+            authMethod === "password"
+              ? "bg-white text-charcoal shadow-xs font-semibold"
+              : "text-stone hover:text-charcoal"
+          }`}
+        >
+          Password
         </button>
-      </p>
-      <div className="relative my-2">
-        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-mist" /></div>
-        <span className="relative bg-white px-3 text-xs text-stone mx-auto flex justify-center">or sign in with</span>
+        <button
+          type="button"
+          onClick={() => {
+            setAuthMethod("otp");
+            setErrors({});
+          }}
+          className={`py-2 rounded-lg transition-all text-center flex items-center justify-center gap-1.5 ${
+            authMethod === "otp"
+              ? "bg-white text-charcoal shadow-xs font-semibold"
+              : "text-stone hover:text-charcoal"
+          }`}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+            <polyline points="22,6 12,13 2,6"/>
+          </svg>
+          One-Time Code (OTP)
+        </button>
       </div>
-      <button
-        type="button"
-        onClick={handleGoogleSignIn}
-        disabled={googleLoading}
-        className="w-full border border-mist bg-white py-3 rounded-full text-sm text-flint font-medium flex items-center justify-center gap-2 hover:bg-cream transition-colors disabled:opacity-60"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-        {googleLoading ? "Connecting with Google…" : "Continue with Google"}
-      </button>
-    </form>
+
+      <form onSubmit={submit} noValidate className="space-y-4" aria-label="Sign in form">
+        {errors.form && (
+          <div className="bg-danger/10 border border-danger/30 rounded-xl p-3 text-xs text-danger">
+            {errors.form}
+          </div>
+        )}
+
+        <div>
+          <Label required>Email</Label>
+          <Input
+            id="email"
+            type="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={setEmail}
+            error={errors.email}
+            autoComplete="email"
+          />
+        </div>
+
+        {authMethod === "password" ? (
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <Label required>Password</Label>
+              <button
+                type="button"
+                onClick={() => switchTo("reset")}
+                className="text-xs text-clay hover:underline"
+              >
+                Forgot password?
+              </button>
+            </div>
+            <Input
+              id="password"
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={setPassword}
+              error={errors.password}
+              autoComplete="current-password"
+            />
+
+            <div className="mt-3">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={requireTwoFactor}
+                  onChange={(e) => setRequireTwoFactor(e.target.checked)}
+                  className="w-4 h-4 rounded border-mist accent-brand"
+                />
+                <span className="text-xs text-stone">
+                  Verify with 2-step OTP code after password
+                </span>
+              </label>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-brand/5 border border-brand/15 rounded-xl p-3 text-xs text-charcoal">
+            <div className="flex items-center gap-2 font-medium text-brand mb-1">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              </svg>
+              Passwordless OTP Sign-in
+            </div>
+            <p className="text-stone text-[11px] leading-relaxed">
+              We'll send a 6-digit one-time passcode to your email. Enter it on the next screen to sign in instantly.
+            </p>
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-brand text-ivory py-3.5 rounded-full text-sm font-medium hover:bg-brand-hover transition-colors disabled:opacity-60 shadow-xs"
+        >
+          {loading
+            ? authMethod === "otp"
+              ? "Sending verification code…"
+              : "Signing in…"
+            : authMethod === "otp"
+            ? "Send verification code"
+            : requireTwoFactor
+            ? "Continue with 2-Step OTP"
+            : "Sign in"}
+        </button>
+
+        <p className="text-center text-sm text-stone">
+          No account?{" "}
+          <button
+            type="button"
+            onClick={() => switchTo("signup")}
+            className="text-brand font-medium hover:underline"
+          >
+            Create one
+          </button>
+        </p>
+
+        <div className="relative my-2">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-mist" />
+          </div>
+          <span className="relative bg-white px-3 text-xs text-stone mx-auto flex justify-center">
+            or sign in with
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleGoogleSignIn}
+          disabled={googleLoading}
+          className="w-full border border-mist bg-white py-3 rounded-full text-sm text-flint font-medium flex items-center justify-center gap-2 hover:bg-cream transition-colors disabled:opacity-60"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+              fill="#4285F4"
+            />
+            <path
+              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+              fill="#34A853"
+            />
+            <path
+              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+              fill="#FBBC05"
+            />
+            <path
+              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+              fill="#EA4335"
+            />
+          </svg>
+          {googleLoading ? "Connecting with Google…" : "Continue with Google"}
+        </button>
+      </form>
+    </div>
   );
 }
 
 /* ─── Sign Up ─── */
-function SignUpForm({ onLogin, switchTo }: { onLogin: () => void; switchTo: (m: AuthMode) => void }) {
+function SignUpForm({
+  onLogin,
+  switchTo,
+  onInitiateOtp,
+}: {
+  onLogin: () => void;
+  switchTo: (m: AuthMode) => void;
+  onInitiateOtp: (params: {
+    email: string;
+    purpose: "signup";
+    name: string;
+    password: string;
+    devOtp?: string;
+  }) => void;
+}) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -207,22 +388,18 @@ function SignUpForm({ onLogin, switchTo }: { onLogin: () => void; switchTo: (m: 
     setGoogleLoading(true);
     setErrors({});
     try {
-      const { user, profile } = await firebaseService.signInWithGoogle();
-      if (user.email) {
-        try {
-          await authApi.signup({
-            email: user.email,
-            password: "firebase_oauth_session",
-            name: user.displayName || name || "Valora Member",
-            termsAccepted: true,
-          }).catch(async () => {
-            await authApi.login(user.email!, "firebase_oauth_session");
-          });
-        } catch {}
+      const { user } = await firebaseService.signInWithGoogle(email || undefined);
+      if (user?.email) {
+        await authApi.googleAuth({
+          email: user.email,
+          name: user.displayName || name || user.email.split("@")[0],
+          photoUrl: user.photoURL || undefined,
+        });
       }
       onLogin();
     } catch (err: any) {
-      setErrors({ form: err.message || "Failed to sign up with Google" });
+      console.error("Google sign up error:", err);
+      setErrors({ form: err?.message || "Failed to sign up with Google" });
     } finally {
       setGoogleLoading(false);
     }
@@ -233,13 +410,19 @@ function SignUpForm({ onLogin, switchTo }: { onLogin: () => void; switchTo: (m: 
     const e = validate();
     if (Object.keys(e).length) { setErrors(e); return; }
     setLoading(true);
+
     try {
-      await authApi.signup({ email, password, name, termsAccepted: agreed });
-      // Create Firebase Auth user and initial Firestore profile
-      firebaseService.signUpWithEmail(name, email, password).catch(() => {});
-      switchTo("verify");
+      // Initiate OTP verification for sign up
+      const otpRes = await authApi.sendOtp(email, "signup");
+      onInitiateOtp({
+        email,
+        purpose: "signup",
+        name: name.trim(),
+        password,
+        devOtp: otpRes.devOtp,
+      });
     } catch (err) {
-      setErrors({ form: (err as Error).message });
+      setErrors({ form: (err as Error).message || "Failed to initiate verification" });
     } finally {
       setLoading(false);
     }
@@ -310,9 +493,9 @@ function SignUpForm({ onLogin, switchTo }: { onLogin: () => void; switchTo: (m: 
       <button
         type="submit"
         disabled={loading}
-        className="w-full bg-brand text-ivory py-3.5 rounded-full text-sm font-medium hover:bg-brand-hover transition-colors disabled:opacity-60 mt-2"
+        className="w-full bg-brand text-ivory py-3.5 rounded-full text-sm font-medium hover:bg-brand-hover transition-colors disabled:opacity-60 mt-2 shadow-xs"
       >
-        {loading ? "Creating account…" : "Create my account"}
+        {loading ? "Sending verification code…" : "Verify with OTP & create account"}
       </button>
 
       <div className="relative my-2">
@@ -397,57 +580,333 @@ function ResetForm({ switchTo }: { switchTo: (m: AuthMode) => void }) {
   );
 }
 
-/* ─── Email Verification State ─── */
-function VerifyEmail({ onVerify }: { onVerify: () => void }) {
-  const handleVerify = async () => {
+/* ─── OTP Verification View ─── */
+function OtpVerification({
+  email,
+  purpose,
+  pendingData,
+  devOtp,
+  onVerified,
+  onBack,
+}: {
+  email: string;
+  purpose: "signup" | "login";
+  pendingData?: { name?: string; password?: string };
+  devOtp?: string;
+  onVerified: () => void;
+  onBack: () => void;
+}) {
+  const [digits, setDigits] = useState<string[]>(["", "", "", "", "", ""]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState(30);
+  const [resending, setResending] = useState(false);
+  const [resendNotice, setResendNotice] = useState<string | null>(null);
+  const [currentDevCode, setCurrentDevCode] = useState<string | undefined>(devOtp || "123456");
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Focus first input on mount
+  useEffect(() => {
+    inputRefs.current[0]?.focus();
+  }, []);
+
+  // Countdown timer
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const timer = setInterval(() => {
+      setCountdown((prev) => prev - 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [countdown]);
+
+  const handleVerify = async (codeToVerify: string) => {
+    if (codeToVerify.length < 6) {
+      setError("Please enter the complete 6-digit verification code");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
     try {
-      await authApi.verifyEmail("demo_token");
-    } catch {}
-    onVerify();
+      await authApi.verifyOtp({
+        email,
+        code: codeToVerify,
+        purpose,
+        name: pendingData?.name,
+        password: pendingData?.password,
+      });
+
+      // Synchronize with Firebase
+      if (purpose === "signup" && pendingData?.name && pendingData?.password) {
+        firebaseService.signUpWithEmail(pendingData.name, email, pendingData.password).catch(() => {});
+      } else if (pendingData?.password) {
+        firebaseService.signInWithEmail(email, pendingData.password).catch(() => {});
+      }
+
+      onVerified();
+    } catch (err: any) {
+      setError(err?.message || "Invalid or expired verification code. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
+  const handleDigitChange = (index: number, val: string) => {
+    const clean = val.replace(/\D/g, "");
+    if (!clean) {
+      const next = [...digits];
+      next[index] = "";
+      setDigits(next);
+      return;
+    }
+
+    const char = clean.slice(-1);
+    const next = [...digits];
+    next[index] = char;
+    setDigits(next);
+    setError(null);
+
+    if (index < 5) {
+      inputRefs.current[index + 1]?.focus();
+    }
+
+    const combined = next.join("");
+    if (combined.length === 6 && !next.includes("")) {
+      handleVerify(combined);
+    }
+  };
+
+  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Backspace") {
+      if (!digits[index] && index > 0) {
+        const next = [...digits];
+        next[index - 1] = "";
+        setDigits(next);
+        inputRefs.current[index - 1]?.focus();
+      } else {
+        const next = [...digits];
+        next[index] = "";
+        setDigits(next);
+      }
+    } else if (e.key === "ArrowLeft" && index > 0) {
+      inputRefs.current[index - 1]?.focus();
+    } else if (e.key === "ArrowRight" && index < 5) {
+      inputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+    if (!pasted) return;
+
+    const next = [...digits];
+    for (let i = 0; i < 6; i++) {
+      next[i] = pasted[i] || "";
+    }
+    setDigits(next);
+    setError(null);
+
+    const targetIdx = Math.min(pasted.length, 5);
+    inputRefs.current[targetIdx]?.focus();
+
+    if (pasted.length === 6) {
+      handleVerify(pasted);
+    }
+  };
+
+  const handleResend = async () => {
+    if (countdown > 0 || resending) return;
+    setResending(true);
+    setError(null);
+    setResendNotice(null);
+
+    try {
+      const res = await authApi.sendOtp(email, purpose);
+      if (res.devOtp) {
+        setCurrentDevCode(res.devOtp);
+      }
+      setCountdown(30);
+      setResendNotice("A new 6-digit code has been dispatched to your email.");
+      setTimeout(() => setResendNotice(null), 5000);
+    } catch (err: any) {
+      setError(err?.message || "Failed to resend code. Please wait a moment.");
+    } finally {
+      setResending(false);
+    }
+  };
+
+  const handleQuickFill = () => {
+    const code = currentDevCode || "123456";
+    const next = code.split("").slice(0, 6);
+    setDigits(next);
+    setError(null);
+    inputRefs.current[5]?.focus();
+    handleVerify(code);
+  };
+
+  const codeFilled = digits.join("").length === 6;
+
   return (
-    <div className="text-center py-6">
-      <div className="w-16 h-16 bg-brand-light rounded-full flex items-center justify-center mx-auto mb-6">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2A4A1E" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-          <polyline points="22,6 12,13 2,6"/>
-        </svg>
+    <div className="py-2">
+      <div className="text-center mb-6">
+        <div className="w-14 h-14 bg-brand-light rounded-2xl flex items-center justify-center mx-auto mb-4 border border-brand/15">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2A4A1E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+        </div>
+        <h2 className="font-display text-2xl text-charcoal mb-2">
+          {purpose === "signup" ? "Verify your email" : "Two-step verification"}
+        </h2>
+        <p className="text-stone text-sm max-w-sm mx-auto leading-relaxed">
+          {purpose === "signup"
+            ? "We sent a 6-digit verification code to"
+            : "Enter the 6-digit authentication code sent to"}
+          <span className="block font-medium text-flint mt-0.5">{email}</span>
+        </p>
       </div>
-      <h3 className="text-xl font-semibold text-charcoal mb-3">Verify your email</h3>
-      <p className="text-stone text-sm leading-relaxed mb-8 max-w-xs mx-auto">
-        We've sent a verification link to your email address. Click it to activate your account, then return here to get started.
-      </p>
-      <div className="bg-ivory border border-mist rounded-xl p-4 text-left mb-6">
-        <p className="text-xs text-stone font-medium mb-1">Didn't receive it?</p>
-        <ul className="text-xs text-stone space-y-1 list-disc list-inside">
-          <li>Check your spam or junk folder</li>
-          <li>Make sure the address you entered is correct</li>
-          <li>Allow a few minutes for delivery</li>
-        </ul>
+
+      {/* Demo helper banner */}
+      <div className="mb-6 p-3.5 bg-sand/60 border border-mist rounded-xl flex items-center justify-between text-xs">
+        <div className="flex items-center gap-2 text-flint">
+          <span className="inline-block w-2 h-2 rounded-full bg-brand animate-pulse" />
+          <span>Demo verification code: <strong className="font-mono text-brand font-semibold text-sm tracking-wider">{currentDevCode || "123456"}</strong></span>
+        </div>
+        <button
+          type="button"
+          onClick={handleQuickFill}
+          className="text-brand font-medium hover:underline bg-white px-2.5 py-1 rounded-md border border-mist shadow-xs"
+        >
+          Auto-fill
+        </button>
       </div>
-      <button onClick={handleVerify} className="bg-brand text-ivory px-8 py-3 rounded-full text-sm font-medium hover:bg-brand-hover transition-colors">
-        I've verified — continue
+
+      {error && (
+        <div role="alert" className="bg-danger/10 border border-danger/30 rounded-xl p-3 text-xs text-danger mb-5 flex items-start gap-2">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" className="shrink-0 mt-0.5" aria-hidden="true">
+            <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm-.75 3.5h1.5v5h-1.5v-5zm0 6.5h1.5v1.5h-1.5V11z"/>
+          </svg>
+          <span>{error}</span>
+        </div>
+      )}
+
+      {resendNotice && (
+        <div className="bg-brand/10 border border-brand/30 rounded-xl p-3 text-xs text-brand mb-5 flex items-center gap-2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          <span>{resendNotice}</span>
+        </div>
+      )}
+
+      {/* 6-box input */}
+      <div className="flex justify-center gap-2 sm:gap-2.5 mb-6">
+        {digits.map((digit, idx) => (
+          <input
+            key={idx}
+            ref={(el) => { inputRefs.current[idx] = el; }}
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={1}
+            value={digit}
+            onChange={(e) => handleDigitChange(idx, e.target.value)}
+            onKeyDown={(e) => handleKeyDown(idx, e)}
+            onPaste={handlePaste}
+            aria-label={`Digit ${idx + 1}`}
+            className={`w-11 h-14 sm:w-13 sm:h-16 text-center text-xl sm:text-2xl font-mono font-semibold rounded-xl bg-white border ${
+              error ? "border-danger focus:border-danger" : digit ? "border-brand bg-brand/[0.02]" : "border-mist"
+            } text-charcoal focus:outline-none focus:ring-2 focus:ring-brand/20 transition-all shadow-xs`}
+          />
+        ))}
+      </div>
+
+      {/* Verify Button */}
+      <button
+        type="button"
+        disabled={loading || !codeFilled}
+        onClick={() => handleVerify(digits.join(""))}
+        className="w-full bg-brand text-ivory py-3.5 rounded-full text-sm font-medium hover:bg-brand-hover transition-colors disabled:opacity-50 flex items-center justify-center gap-2 mb-4 shadow-sm"
+      >
+        {loading ? (
+          <>
+            <div className="w-4 h-4 border-2 border-ivory border-t-transparent rounded-full animate-spin" />
+            <span>Verifying code…</span>
+          </>
+        ) : (
+          <span>Confirm & Continue</span>
+        )}
       </button>
-      <p className="text-xs text-stone mt-4">
-        <button className="hover:underline">Resend verification email</button>
-      </p>
+
+      {/* Resend & Change email controls */}
+      <div className="text-center space-y-2">
+        <p className="text-xs text-stone">
+          Didn't receive the email?{" "}
+          {countdown > 0 ? (
+            <span className="text-flint font-medium">Resend in {countdown}s</span>
+          ) : (
+            <button
+              type="button"
+              onClick={handleResend}
+              disabled={resending}
+              className="text-brand font-medium hover:underline disabled:opacity-50"
+            >
+              {resending ? "Sending…" : "Resend code"}
+            </button>
+          )}
+        </p>
+
+        <div>
+          <button
+            type="button"
+            onClick={onBack}
+            className="text-xs text-stone hover:text-charcoal transition-colors underline"
+          >
+            Wrong email address? Change email
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
 
 /* ─── Auth shell ─── */
 export default function Auth({ mode, setMode, navigate, onLogin }: AuthProps) {
+  const [otpEmail, setOtpEmail] = useState("");
+  const [otpPurpose, setOtpPurpose] = useState<"signup" | "login">("signup");
+  const [otpPendingData, setOtpPendingData] = useState<{ name?: string; password?: string }>({});
+  const [otpDevCode, setOtpDevCode] = useState<string | undefined>(undefined);
+
   const titles: Record<AuthMode, string> = {
     login: "Welcome back",
     signup: "Create your account",
     reset: "Reset your password",
-    verify: "One more step",
+    verify: otpPurpose === "signup" ? "Verify your email" : "Two-step verification",
+  };
+
+  const handleInitiateOtp = (params: {
+    email: string;
+    purpose: "signup" | "login";
+    name?: string;
+    password?: string;
+    devOtp?: string;
+  }) => {
+    setOtpEmail(params.email);
+    setOtpPurpose(params.purpose);
+    setOtpPendingData({ name: params.name, password: params.password });
+    setOtpDevCode(params.devOtp);
+    setMode("verify");
   };
 
   const handleVerified = () => {
     onLogin();
-    navigate("onboarding");
+    if (otpPurpose === "signup") {
+      navigate("onboarding");
+    } else {
+      navigate("discover");
+    }
   };
 
   return (
@@ -497,12 +956,39 @@ export default function Auth({ mode, setMode, navigate, onLogin }: AuthProps) {
           )}
           {mode === "login" && <p className="text-stone text-sm mb-8">Good to have you back.</p>}
           {mode === "reset" && <p className="text-stone text-sm mb-8">We'll get you sorted.</p>}
-          {mode === "verify" && <p className="text-stone text-sm mb-8">Almost there.</p>}
+          {mode === "verify" && (
+            <p className="text-stone text-sm mb-8">
+              {otpPurpose === "signup"
+                ? "Enter your 6-digit code to activate your account."
+                : "Enter your 6-digit security code to confirm your identity."}
+            </p>
+          )}
 
-          {mode === "login" && <LoginForm onLogin={onLogin} switchTo={setMode} />}
-          {mode === "signup" && <SignUpForm onLogin={onLogin} switchTo={setMode} />}
+          {mode === "login" && (
+            <LoginForm
+              onLogin={onLogin}
+              switchTo={setMode}
+              onInitiateOtp={handleInitiateOtp}
+            />
+          )}
+          {mode === "signup" && (
+            <SignUpForm
+              onLogin={onLogin}
+              switchTo={setMode}
+              onInitiateOtp={handleInitiateOtp}
+            />
+          )}
           {mode === "reset" && <ResetForm switchTo={setMode} />}
-          {mode === "verify" && <VerifyEmail onVerify={handleVerified} />}
+          {mode === "verify" && (
+            <OtpVerification
+              email={otpEmail || "you@example.com"}
+              purpose={otpPurpose}
+              pendingData={otpPendingData}
+              devOtp={otpDevCode}
+              onVerified={handleVerified}
+              onBack={() => setMode(otpPurpose === "signup" ? "signup" : "login")}
+            />
+          )}
         </div>
       </div>
     </div>

@@ -3,6 +3,7 @@ import ValoraLogo from "../components/ValoraLogo";
 import UndiscoveredAvatar from "../components/UndiscoveredAvatar";
 import PhotoImporter from "../components/PhotoImporter";
 import { profilesApi } from "../services/api";
+import { firebaseService, auth } from "../services/firebase";
 
 interface OnboardingProps {
   onComplete: () => void;
@@ -265,8 +266,47 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             },
           })
         );
+        if (auth.currentUser) {
+          firebaseService.updateProfile(auth.currentUser.uid, {
+            name,
+            age: Number(age) || 28,
+            pronouns: pronouns || "they/them",
+            location: location || "Portland, OR",
+            occupation: occupation || "Creative",
+            bio: bio || "Looking for meaningful, values-aligned connections.",
+            photo: photo || "",
+            photos: photo ? [photo] : [],
+            lifestyle,
+            values,
+            communicationStyle: commStyle,
+            boundaries,
+            lookingFor: "Meaningful, intentional relationship",
+          }).catch(() => {});
+        }
         onComplete();
       } catch (err) {
+        if (auth.currentUser) {
+          try {
+            await firebaseService.updateProfile(auth.currentUser.uid, {
+              name,
+              age: Number(age) || 28,
+              pronouns: pronouns || "they/them",
+              location: location || "Portland, OR",
+              occupation: occupation || "Creative",
+              bio: bio || "Looking for meaningful, values-aligned connections.",
+              photo: photo || "",
+              photos: photo ? [photo] : [],
+              lifestyle,
+              values,
+              communicationStyle: commStyle,
+              boundaries,
+              lookingFor: "Meaningful, intentional relationship",
+            });
+            setSubmitting(false);
+            onComplete();
+            return;
+          } catch {}
+        }
         setSubmitting(false);
         setSubmitError((err as Error)?.message || "Failed to publish profile to database. Please check your answers.");
       }

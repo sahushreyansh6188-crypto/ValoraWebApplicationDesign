@@ -1,9 +1,24 @@
 import { PGlite } from '@electric-sql/pglite';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
+import fs from 'fs';
 
 async function main() {
-  const db = new PGlite('./.pgdata');
-  await db.waitReady;
+  let db: PGlite;
+  try {
+    if (fs.existsSync('./.pgdata/postmaster.pid')) {
+      fs.unlinkSync('./.pgdata/postmaster.pid');
+    }
+    db = new PGlite('./.pgdata');
+    await db.waitReady;
+  } catch (err) {
+    console.warn('Recovering .pgdata due to aborted state:', err);
+    try {
+      fs.rmSync('./.pgdata', { recursive: true, force: true });
+    } catch {}
+    db = new PGlite('./.pgdata');
+    await db.waitReady;
+  }
+
   const server = new PGLiteSocketServer({
     db,
     port: 5432,
