@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 3000",
-    "build": "vite build",
+    "build": "vite build && node -e \"const fs=require('fs'); try { if(fs.existsSync('dist')) fs.cpSync('dist', '../dist', {recursive:true, force:true}); } catch(e){} try { if(fs.existsSync('../dist') && !fs.existsSync('dist')) fs.cpSync('../dist', 'dist', {recursive:true, force:true}); } catch(e){}\"",
     "preview": "vite preview --host 0.0.0.0 --port 3000",
     "lint": "tsc --noEmit",
     "format": "oxfmt"

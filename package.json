@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "dev": "bash ./scripts/start-dev.sh",
-    "build": "npm run build --prefix ValoraWebApplicationDesign",
+    "build": "npm run build --prefix ValoraWebApplicationDesign && node -e \"const fs=require('fs'); try { if(fs.existsSync('ValoraWebApplicationDesign/dist')) fs.cpSync('ValoraWebApplicationDesign/dist', 'dist', {recursive:true, force:true}); } catch(e){} try { if(fs.existsSync('dist') && !fs.existsSync('ValoraWebApplicationDesign/dist')) fs.cpSync('dist', 'ValoraWebApplicationDesign/dist', {recursive:true, force:true}); } catch(e){}\"",
     "preview": "npm run preview --prefix ValoraWebApplicationDesign",
     "lint": "npm run lint --prefix ValoraWebApplicationDesign",
     "dev:backend": "npm run dev --prefix backend",
