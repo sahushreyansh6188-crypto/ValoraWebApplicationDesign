@@ -83,7 +83,6 @@ export function buildApp(): FastifyInstance {
       });
       api.register(authRoutes, { prefix: '/auth' });
       api.register(profilesRoutes, { prefix: '/profiles' });
-      api.register(profilesRoutes, { prefix: '/profile' });
       api.register(discoveryRoutes, { prefix: '/discovery' });
       api.register(connectionsRoutes, { prefix: '/connections' });
       api.register(messagingRoutes, { prefix: '/messaging' });
@@ -131,6 +130,20 @@ export function buildApp(): FastifyInstance {
     // Fastify Rate Limit Error
     if (anyError.statusCode === 429 || anyError.code === 'FST_ERR_RATE_LIMIT_EXCEEDED') {
       return sendError(reply, AppError.rateLimited());
+    }
+
+    // Method Not Allowed Error (405)
+    if (anyError.statusCode === 405) {
+      request.log.error(
+        {
+          method: request.method,
+          url: request.url,
+          headers: request.headers,
+          error: anyError.message,
+        },
+        `[HTTP 405 Method Not Allowed] Route ${request.method} ${request.url} is not permitted`
+      );
+      return sendError(reply, new AppError(405, 'METHOD_NOT_ALLOWED', `Method ${request.method} not allowed for ${request.url}`));
     }
 
     // Client HTTP Errors

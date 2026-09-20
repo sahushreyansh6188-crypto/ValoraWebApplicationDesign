@@ -7,6 +7,22 @@ export async function requestLogger(request: FastifyRequest, reply: FastifyReply
 
   reply.raw.on('finish', () => {
     const duration = Date.now() - start;
+
+    if (reply.statusCode === 405) {
+      request.log.error(
+        {
+          requestId: request.id,
+          method: request.method,
+          url: request.url,
+          statusCode: 405,
+          headers: request.headers,
+          durationMs: duration,
+          userId: request.user?.sub,
+        },
+        `[HTTP 405 Method Not Allowed] Route ${request.method} ${request.url} resulted in 405 Method Not Allowed`
+      );
+    }
+
     request.log.info(
       {
         requestId: request.id,

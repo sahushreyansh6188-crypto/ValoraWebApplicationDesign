@@ -62,31 +62,72 @@ const onboardingSchema = z.object({
 export const profilesRoutes: FastifyPluginAsync = async (fastify) => {
   const profilesService = new ProfilesService(fastify.prisma);
 
+  // Hook for logging all profiles route requests
+  fastify.addHook('onRequest', async (request) => {
+    fastify.log.info(
+      {
+        method: request.method,
+        url: request.url,
+        routerPath: request.routeOptions?.url,
+        userAgent: request.headers['user-agent'],
+      },
+      `[ProfilesRoute] ${request.method} ${request.url}`
+    );
+  });
+
   const handleGetMyProfile = async (request: any, reply: any) => {
+    fastify.log.info({ userId: request.user?.sub, method: request.method, url: request.url }, '[ProfilesRoute] Fetching profile');
     const profile = await profilesService.getMyProfile(request.user!.sub);
     return sendSuccess(reply, profile);
   };
   fastify.get('/me', { preHandler: [authenticate] }, handleGetMyProfile);
   fastify.get('/', { preHandler: [authenticate] }, handleGetMyProfile);
+  fastify.get('/onboarding', { preHandler: [authenticate] }, handleGetMyProfile);
 
   const handleUpdateMyProfile = async (request: any, reply: any) => {
+    fastify.log.info({ userId: request.user?.sub, method: request.method, url: request.url }, '[ProfilesRoute] Updating profile');
     const body = updateProfileSchema.parse(request.body);
     const updated = await profilesService.updateMyProfile(request.user!.sub, body);
     return sendSuccess(reply, updated);
   };
+
+  const handleSubmitOnboarding = async (request: any, reply: any) => {
+    fastify.log.info({ userId: request.user?.sub, method: request.method, url: request.url }, '[ProfilesRoute] Submitting onboarding profile');
+    const body = onboardingSchema.parse(request.body);
+    const profile = await profilesService.submitOnboarding(request.user!.sub, body);
+    return sendSuccess(reply, profile, 200);
+  };
+
+  // Smart handler for update or registration: dispatches to submitOnboarding if full onboarding payload is present, otherwise updates profile
+  const handleUpdateOrCreate = async (request: any, reply: any) => {
+    fastify.log.info({ userId: request.user?.sub, method: request.method, url: request.url }, '[ProfilesRoute] Update/Create profile handler invoked');
+    const body = request.body || {};
+    if (body.lifestyle && body.values && body.communicationStyle) {
+      return handleSubmitOnboarding(request, reply);
+    }
+    return handleUpdateMyProfile(request, reply);
+  };
+
+  // Profile retrieval and modification mapped across POST, PUT, PATCH, GET
+  fastify.post('/me', { preHandler: [authenticate] }, handleUpdateOrCreate);
+  fastify.post('/', { preHandler: [authenticate] }, handleUpdateOrCreate);
   fastify.patch('/me', { preHandler: [authenticate] }, handleUpdateMyProfile);
   fastify.patch('/', { preHandler: [authenticate] }, handleUpdateMyProfile);
   fastify.put('/me', { preHandler: [authenticate] }, handleUpdateMyProfile);
   fastify.put('/', { preHandler: [authenticate] }, handleUpdateMyProfile);
 
-  const handleSubmitOnboarding = async (request: any, reply: any) => {
-    const body = onboardingSchema.parse(request.body);
-    const profile = await profilesService.submitOnboarding(request.user!.sub, body);
-    return sendSuccess(reply, profile, 200);
-  };
+  // Onboarding endpoints mapped across POST, PUT, PATCH
   fastify.post('/onboarding', { preHandler: [authenticate] }, handleSubmitOnboarding);
   fastify.put('/onboarding', { preHandler: [authenticate] }, handleSubmitOnboarding);
   fastify.patch('/onboarding', { preHandler: [authenticate] }, handleSubmitOnboarding);
+
+  // Registration & creation aliases mapped across POST, PUT, PATCH
+  fastify.post('/register', { preHandler: [authenticate] }, handleSubmitOnboarding);
+  fastify.put('/register', { preHandler: [authenticate] }, handleSubmitOnboarding);
+  fastify.patch('/register', { preHandler: [authenticate] }, handleSubmitOnboarding);
+  fastify.post('/create', { preHandler: [authenticate] }, handleSubmitOnboarding);
+  fastify.put('/create', { preHandler: [authenticate] }, handleSubmitOnboarding);
+  fastify.patch('/create', { preHandler: [authenticate] }, handleSubmitOnboarding);
 
   fastify.post('/photos/upload-url', { preHandler: [authenticate] }, async (request, reply) => {
     const { fileName, fileType } = z
