@@ -22,6 +22,7 @@ const signupSchema = z
 const loginSchema = z.object({
   email: z.string().email('Enter a valid email address'),
   password: z.string().min(1, 'Password is required'),
+  requireTwoFactor: z.boolean().optional(),
 });
 
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
@@ -80,11 +81,18 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.patch('/signup', handleSignup);
 
   /**
-   * Phase 6: Step 1 Login - verifies password and dispatches secure Email OTP
+   * Phase 6: Step 1 Login - verifies password and dispatches secure Email OTP (or issues session if 2FA not required)
    */
   const handleLogin = async (request: any, reply: any) => {
     const body = loginSchema.parse(request.body);
     const result = await authService.login(body);
+    if (result.user && !result.requiresOtp) {
+      const tokens = issueTokens(result.user, reply);
+      return sendSuccess(reply, {
+        ...result,
+        ...tokens,
+      });
+    }
     return sendSuccess(reply, result);
   };
   fastify.post('/login', handleLogin);

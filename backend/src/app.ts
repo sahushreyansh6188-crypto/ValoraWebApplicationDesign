@@ -98,6 +98,10 @@ export function buildApp(): FastifyInstance {
     { prefix: env.API_PREFIX }
   );
 
+  // Fallback direct routes for /auth and /api/auth
+  app.register(authRoutes, { prefix: '/auth' });
+  app.register(authRoutes, { prefix: '/api/auth' });
+
   // 5. WebSocket Gateway
   app.register(websocketGateway);
 
@@ -132,18 +136,17 @@ export function buildApp(): FastifyInstance {
       return sendError(reply, AppError.rateLimited());
     }
 
-    // Method Not Allowed Error (405)
+    // Intercept Method Not Allowed Error (405) - gracefully remap to standard 400
     if (anyError.statusCode === 405) {
-      request.log.error(
+      request.log.warn(
         {
           method: request.method,
           url: request.url,
-          headers: request.headers,
           error: anyError.message,
         },
-        `[HTTP 405 Method Not Allowed] Route ${request.method} ${request.url} is not permitted`
+        `[HTTP 405 Intercepted] Route ${request.method} ${request.url}`
       );
-      return sendError(reply, new AppError(405, 'METHOD_NOT_ALLOWED', `Method ${request.method} not allowed for ${request.url}`));
+      return sendError(reply, AppError.badRequest(`Method ${request.method} is not supported for ${request.url}`));
     }
 
     // Client HTTP Errors
