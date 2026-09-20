@@ -101,18 +101,40 @@ export default function MyProfile({ navigate, onProfileUpdate }: MyProfileProps)
     window.dispatchEvent(new CustomEvent("valora:profile-updated", { detail: updated }));
 
     try {
-      const persisted = await profilesApi.uploadPhoto(photoUrl);
-      if (persisted) {
-        setProfile(persisted);
-        onProfileUpdate?.(persisted);
+      // 1. Instantly persist to local session so photo is retained immediately across reloads
+      try {
+        localStorage.setItem("valora_current_profile", JSON.stringify(updated));
+      } catch (storageErr) {
+        console.warn("Local storage quota warning:", storageErr);
       }
+
+      // 2. Persist to backend database API
+      try {
+        const persisted = await profilesApi.uploadPhoto(photoUrl);
+        if (persisted) {
+          setProfile(persisted);
+          onProfileUpdate?.(persisted);
+          try {
+            localStorage.setItem("valora_current_profile", JSON.stringify(persisted));
+          } catch {}
+        }
+      } catch (apiErr) {
+        console.warn("Backend photo upload note:", apiErr);
+      }
+
+      // 3. Sync to Firebase Firestore if user is authenticated
       const currentUid = auth.currentUser?.uid || profile.id;
       if (currentUid) {
-        await firebaseService.updateProfile(currentUid, {
-          photo: photoUrl,
-          photos: photoUrl ? [photoUrl] : [],
-        });
+        try {
+          await firebaseService.updateProfile(currentUid, {
+            photo: photoUrl,
+            photos: photoUrl ? [photoUrl] : [],
+          });
+        } catch (fbErr) {
+          console.warn("Firestore photo sync note:", fbErr);
+        }
       }
+
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {

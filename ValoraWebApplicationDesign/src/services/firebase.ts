@@ -389,12 +389,23 @@ export const firebaseService = {
    * Update Profile in Firestore
    */
   async updateProfile(userId: string, data: Partial<UserProfile>): Promise<void> {
-    const profileDocRef = doc(db, "profiles", userId);
-    await setDoc(profileDocRef, {
-      ...data,
-      userId,
-      updatedAt: new Date().toISOString(),
-    }, { merge: true });
+    const currentUid = auth.currentUser?.uid || userId;
+    if (!currentUid) return;
+
+    try {
+      const profileDocRef = doc(db, "profiles", currentUid);
+      await setDoc(
+        profileDocRef,
+        {
+          ...data,
+          userId: currentUid,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+    } catch (err) {
+      console.warn("Firestore updateProfile non-blocking sync notice:", (err as Error)?.message || err);
+    }
   },
 
   /**

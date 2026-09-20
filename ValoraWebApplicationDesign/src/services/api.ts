@@ -415,10 +415,16 @@ export const profilesApi = {
 
   async uploadPhoto(photo: string): Promise<UserProfile> {
     try {
-      return await request<UserProfile>("/profiles/me", {
+      const res = await request<UserProfile>("/profiles/me", {
         method: "PATCH",
         body: JSON.stringify({ photo, photos: photo ? [photo] : [] }),
       });
+      if (res && res.id) {
+        try {
+          localStorage.setItem("valora_current_profile", JSON.stringify(res));
+        } catch {}
+      }
+      return res;
     } catch {
       const stored = localStorage.getItem("valora_current_profile");
       const current: Partial<UserProfile> = stored ? JSON.parse(stored) : {};
@@ -427,7 +433,9 @@ export const profilesApi = {
         photo,
         photos: photo ? [photo] : [],
       } as UserProfile;
-      localStorage.setItem("valora_current_profile", JSON.stringify(updated));
+      try {
+        localStorage.setItem("valora_current_profile", JSON.stringify(updated));
+      } catch {}
       return updated;
     }
   },

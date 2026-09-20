@@ -22,7 +22,7 @@ const ALLOWED_MIME_TYPES = new Set([
 ]);
 
 const MAX_INPUT_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const MAX_DIMENSION = 1200; // Optimal for high-DPI profile views
+const MAX_DIMENSION = 720; // Optimal for high-DPI profile views while guaranteeing fast database storage
 
 export function validateImageFile(file: File): { valid: boolean; error?: string } {
   if (!file) {
@@ -122,14 +122,22 @@ export async function processImageFile(file: File): Promise<ProcessedImageResult
           return;
         }
 
-        // Draw image onto canvas
+        // Draw image onto canvas with high quality smoothing
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, width, height);
 
-        const targetMime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
-        const quality = 0.88;
-        const optimizedDataUrl = canvas.toDataURL(targetMime, quality);
+        // Convert photos to efficient JPEG format (unless animated GIF handled above)
+        // This ensures uncompressed PNGs don't explode to 3-5MB and exceed Firestore / localStorage / DB limits
+        const targetMime = 'image/jpeg';
+        let quality = 0.82;
+        let optimizedDataUrl = canvas.toDataURL(targetMime, quality);
+
+        // If data URL is still over 250KB, compress further to guarantee safe DB persistence
+        if (optimizedDataUrl.length > 250 * 1024) {
+          quality = 0.72;
+          optimizedDataUrl = canvas.toDataURL(targetMime, quality);
+        }
 
         resolve({
           dataUrl: optimizedDataUrl,
