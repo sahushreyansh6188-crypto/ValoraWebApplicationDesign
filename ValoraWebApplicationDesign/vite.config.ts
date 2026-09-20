@@ -20,6 +20,23 @@ if (fs.existsSync(siteJsonPath)) {
   }
 }
 
+function syncDistToParent(): Plugin {
+  return {
+    name: 'sync-dist-to-parent',
+    closeBundle() {
+      const srcDir = path.resolve(rootDir, 'dist')
+      const targetDir = path.resolve(rootDir, '../dist')
+      try {
+        if (fs.existsSync(srcDir)) {
+          fs.cpSync(srcDir, targetDir, { recursive: true, force: true })
+        }
+      } catch {
+        // Silently pass if parent directory is restricted
+      }
+    },
+  }
+}
+
 // Vite config — https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   // .figma/make/deploy-preview passes `--mode development` for cached-preview builds.
@@ -28,10 +45,11 @@ export default defineConfig(({ mode }) => {
   return {
     base: process.env.FIGMA_PUBLIC_URL ? `${process.env.FIGMA_PUBLIC_URL}/` : '/',
     build: {
-      outDir: path.resolve(rootDir, '../dist'),
+      outDir: path.resolve(rootDir, 'dist'),
       emptyOutDir: true,
       sourcemap: emitSourcemaps ? 'inline' : false,
       minify: !emitSourcemaps,
+      chunkSizeWarningLimit: 1600,
     },
     plugins: [
       react(),
@@ -40,6 +58,7 @@ export default defineConfig(({ mode }) => {
       figmaErrorOverlayReplay(),
       figmaReactRefreshBoundaryFallback(),
       figmaMakeKitPlugin({ storiesGlob: '/src/**/*.stories.{ts,tsx,js,jsx}' }),
+      syncDistToParent(),
     ],
     resolve: {
       alias: {
