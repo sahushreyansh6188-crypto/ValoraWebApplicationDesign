@@ -16,6 +16,7 @@
     "dev:frontend": "npm run dev --prefix ValoraWebApplicationDesign"
   },
   "dependencies": {
+    "@google/genai": "^2.23.0",
     "firebase": "^12.19.0"
   }
 }

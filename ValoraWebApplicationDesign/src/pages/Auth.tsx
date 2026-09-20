@@ -68,6 +68,109 @@ function Input({
   );
 }
 
+/* ─── Google Account Selection Dialog ─── */
+function GoogleAccountModal({
+  isOpen,
+  initialEmail,
+  onConfirm,
+  onClose,
+  loading,
+}: {
+  isOpen: boolean;
+  initialEmail?: string;
+  onConfirm: (email: string, name?: string) => Promise<void>;
+  onClose: () => void;
+  loading: boolean;
+}) {
+  const [googleEmail, setGoogleEmail] = useState(initialEmail || "");
+  const [googleName, setGoogleName] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (initialEmail) setGoogleEmail(initialEmail);
+  }, [initialEmail]);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!googleEmail || !/\S+@\S+\.\S+/.test(googleEmail.trim())) {
+      setError("Please enter a valid Google Account email (e.g. name@gmail.com)");
+      return;
+    }
+    setError("");
+    await onConfirm(googleEmail.trim(), googleName.trim() || undefined);
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="google-auth-title"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal/50 backdrop-blur-xs"
+    >
+      <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 space-y-4 border border-mist relative">
+        <div className="text-center space-y-2">
+          <div className="w-12 h-12 rounded-2xl bg-white shadow-xs border border-mist flex items-center justify-center mx-auto">
+            <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+            </svg>
+          </div>
+          <h3 id="google-auth-title" className="font-display text-xl text-charcoal">Sign in with Google</h3>
+          <p className="text-xs text-stone leading-relaxed">
+            Enter your Google Account email to authenticate and continue to VALORA.
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3.5 pt-1">
+          {error && <FieldError msg={error} />}
+          <div>
+            <Label required>Google ID / Email</Label>
+            <Input
+              type="email"
+              placeholder="you@gmail.com"
+              value={googleEmail}
+              onChange={setGoogleEmail}
+              autoComplete="email"
+            />
+          </div>
+          <div>
+            <Label>Your Name (Optional)</Label>
+            <Input
+              type="text"
+              placeholder="Full Name"
+              value={googleName}
+              onChange={setGoogleName}
+              autoComplete="name"
+            />
+          </div>
+
+          <div className="pt-2 flex flex-col gap-2">
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-brand text-ivory py-3 rounded-full text-sm font-medium hover:bg-brand-hover transition-colors shadow-xs disabled:opacity-60"
+            >
+              {loading ? "Authenticating with Google…" : "Continue with Google ID"}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={loading}
+              className="w-full text-xs text-stone hover:text-charcoal py-2 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Login ─── */
 function LoginForm({
   onLogin,
@@ -89,6 +192,8 @@ function LoginForm({
   const [requireTwoFactor, setRequireTwoFactor] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [showGoogleModal, setShowGoogleModal] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const validate = () => {
     const e: Record<string, string> = {};
@@ -97,8 +202,6 @@ function LoginForm({
     if (authMethod === "password" && !password) e.password = "Password is required";
     return e;
   };
-
-  const [googleLoading, setGoogleLoading] = useState(false);
 
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
@@ -111,11 +214,36 @@ function LoginForm({
           name: user.displayName || user.email.split("@")[0],
           photoUrl: user.photoURL || undefined,
         });
+        onLogin();
+      } else {
+        setShowGoogleModal(true);
       }
+    } catch (err: any) {
+      if (err?.message === "GOOGLE_ACCOUNT_REQUIRED" || err?.code?.includes("popup") || err?.code?.includes("domain")) {
+        setShowGoogleModal(true);
+      } else {
+        console.error("Google sign in error:", err);
+        setErrors({ form: err?.message || "Failed to sign in with Google" });
+      }
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  const handleConfirmGoogleAccount = async (chosenEmail: string, chosenName?: string) => {
+    setGoogleLoading(true);
+    setErrors({});
+    try {
+      const { user } = await firebaseService.signInWithGoogle(chosenEmail);
+      await authApi.googleAuth({
+        email: chosenEmail,
+        name: chosenName || user?.displayName || chosenEmail.split("@")[0],
+        photoUrl: user?.photoURL || undefined,
+      });
+      setShowGoogleModal(false);
       onLogin();
     } catch (err: any) {
-      console.error("Google sign in error:", err);
-      setErrors({ form: err?.message || "Failed to sign in with Google" });
+      setErrors({ form: err?.message || "Failed to authenticate with Google ID" });
     } finally {
       setGoogleLoading(false);
     }
@@ -139,19 +267,17 @@ function LoginForm({
         return;
       }
 
-      if (requireTwoFactor) {
-        // First verify password or credentials, then dispatch OTP challenge
-        const res = await authApi.sendOtp(email, "login");
+      const loginRes = await authApi.login(email, password);
+      if ("requiresOtp" in loginRes && loginRes.requiresOtp) {
         onInitiateOtp({
-          email,
+          email: loginRes.email,
           purpose: "login",
           password,
-          devOtp: res.devOtp,
+          devOtp: loginRes.devOtp,
         });
         return;
       }
 
-      await authApi.login(email, password);
       // Synchronize with Firebase Auth in background
       firebaseService.signInWithEmail(email, password).catch(() => {});
       onLogin();
@@ -341,7 +467,33 @@ function LoginForm({
           </svg>
           {googleLoading ? "Connecting with Google…" : "Continue with Google"}
         </button>
+
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              await authApi.facebookAuth({ email: email || undefined });
+              onLogin();
+            } catch (err: any) {
+              setErrors({ form: err?.message || "Facebook login requires client configuration" });
+            }
+          }}
+          className="w-full border border-mist bg-white py-3 rounded-full text-sm text-flint font-medium flex items-center justify-center gap-2 hover:bg-cream transition-colors"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="#1877F2">
+            <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+          </svg>
+          Continue with Facebook
+        </button>
       </form>
+
+      <GoogleAccountModal
+        isOpen={showGoogleModal}
+        initialEmail={email}
+        onConfirm={handleConfirmGoogleAccount}
+        onClose={() => setShowGoogleModal(false)}
+        loading={googleLoading}
+      />
     </div>
   );
 }
@@ -383,6 +535,7 @@ function SignUpForm({
   };
 
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [showGoogleModal, setShowGoogleModal] = useState(false);
 
   const handleGoogleSignUp = async () => {
     setGoogleLoading(true);
@@ -395,11 +548,36 @@ function SignUpForm({
           name: user.displayName || name || user.email.split("@")[0],
           photoUrl: user.photoURL || undefined,
         });
+        onLogin();
+      } else {
+        setShowGoogleModal(true);
       }
+    } catch (err: any) {
+      if (err?.message === "GOOGLE_ACCOUNT_REQUIRED" || err?.code?.includes("popup") || err?.code?.includes("domain")) {
+        setShowGoogleModal(true);
+      } else {
+        console.error("Google sign up error:", err);
+        setErrors({ form: err?.message || "Failed to sign up with Google" });
+      }
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  const handleConfirmGoogleAccount = async (chosenEmail: string, chosenName?: string) => {
+    setGoogleLoading(true);
+    setErrors({});
+    try {
+      const { user } = await firebaseService.signInWithGoogle(chosenEmail);
+      await authApi.googleAuth({
+        email: chosenEmail,
+        name: chosenName || name || user?.displayName || chosenEmail.split("@")[0],
+        photoUrl: user?.photoURL || undefined,
+      });
+      setShowGoogleModal(false);
       onLogin();
     } catch (err: any) {
-      console.error("Google sign up error:", err);
-      setErrors({ form: err?.message || "Failed to sign up with Google" });
+      setErrors({ form: err?.message || "Failed to authenticate with Google ID" });
     } finally {
       setGoogleLoading(false);
     }
@@ -429,7 +607,8 @@ function SignUpForm({
   };
 
   return (
-    <form onSubmit={submit} noValidate className="space-y-4" aria-label="Create account form">
+    <>
+      <form onSubmit={submit} noValidate className="space-y-4" aria-label="Create account form">
       {errors.form && (
         <div className="bg-danger/10 border border-danger/30 rounded-xl p-3 text-xs text-danger">
           {errors.form}
@@ -513,6 +692,24 @@ function SignUpForm({
         {googleLoading ? "Connecting with Google…" : "Continue with Google"}
       </button>
 
+      <button
+        type="button"
+        onClick={async () => {
+          try {
+            await authApi.facebookAuth({ email: email || undefined, name: name || undefined });
+            onLogin();
+          } catch (err: any) {
+            setErrors({ form: err?.message || "Facebook sign up requires client configuration" });
+          }
+        }}
+        className="w-full border border-mist bg-white py-3 rounded-full text-sm text-flint font-medium flex items-center justify-center gap-2 hover:bg-cream transition-colors"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="#1877F2">
+          <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+        </svg>
+        Continue with Facebook
+      </button>
+
       <p className="text-center text-sm text-stone">
         Already a member?{" "}
         <button type="button" onClick={() => switchTo("login")} className="text-brand font-medium hover:underline">
@@ -520,6 +717,15 @@ function SignUpForm({
         </button>
       </p>
     </form>
+
+    <GoogleAccountModal
+      isOpen={showGoogleModal}
+      initialEmail={email}
+      onConfirm={handleConfirmGoogleAccount}
+      onClose={() => setShowGoogleModal(false)}
+      loading={googleLoading}
+    />
+  </>
   );
 }
 
@@ -533,7 +739,7 @@ function ResetForm({ switchTo }: { switchTo: (m: AuthMode) => void }) {
     ev.preventDefault();
     if (!email) { setError("Email is required"); return; }
     try {
-      await authApi.resetPassword(email).catch(() => {});
+      await authApi.forgotPassword(email).catch(() => {});
       await firebaseService.resetPassword(email).catch(() => {});
       setSent(true);
     } catch (err) {

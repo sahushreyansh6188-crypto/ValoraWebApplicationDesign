@@ -51,6 +51,15 @@ export interface AuthSession {
   expiresIn: number;
 }
 
+export interface LoginStep1Result {
+  requiresOtp: boolean;
+  email: string;
+  maskedEmail: string;
+  expiresInSeconds: number;
+  devOtp?: string;
+  message: string;
+}
+
 // ── Storage Helpers ──────────────────────────────────────────────────────────
 export const tokenStorage = {
   get: (): string | null => {
@@ -168,10 +177,23 @@ export const authApi = {
     return res;
   },
 
-  async login(email: string, password?: string): Promise<AuthSession> {
-    const res = await request<AuthSession>("/auth/login", {
+  async login(email: string, password?: string): Promise<AuthSession | LoginStep1Result> {
+    const res = await request<any>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
+    });
+    if (res.requiresOtp) {
+      return res as LoginStep1Result;
+    }
+    tokenStorage.set(res.accessToken);
+    if (res.refreshToken) tokenStorage.setRefreshToken(res.refreshToken);
+    return res as AuthSession;
+  },
+
+  async loginWithOtp(email: string, code: string): Promise<AuthSession> {
+    const res = await request<AuthSession>("/auth/login-otp", {
+      method: "POST",
+      body: JSON.stringify({ email, code }),
     });
     tokenStorage.set(res.accessToken);
     if (res.refreshToken) tokenStorage.setRefreshToken(res.refreshToken);
@@ -185,10 +207,17 @@ export const authApi = {
     tokenStorage.clear();
   },
 
-  async resetPassword(email: string): Promise<{ message: string }> {
-    return request<{ message: string }>("/auth/reset-password", {
+  async forgotPassword(email: string): Promise<{ message: string; devResetToken?: string }> {
+    return request<{ message: string; devResetToken?: string }>("/auth/forgot-password", {
       method: "POST",
       body: JSON.stringify({ email }),
+    });
+  },
+
+  async resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
+    return request<{ message: string }>("/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ token, newPassword }),
     });
   },
 
@@ -271,12 +300,15 @@ export const authApi = {
       if (res.refreshToken) tokenStorage.setRefreshToken(res.refreshToken);
       return res;
     } catch (err) {
+      if (!params?.email) {
+        throw err;
+      }
       const fallbackSession: AuthSession = {
         accessToken: "valora_google_session_" + Date.now(),
         expiresIn: 3600,
         user: {
           id: "usr_google_" + Date.now(),
-          email: params?.email || "dude.5796.3223@gmail.com",
+          email: params.email,
           role: "user",
           accountStatus: "active",
           isVerified: true,
@@ -285,6 +317,21 @@ export const authApi = {
       tokenStorage.set(fallbackSession.accessToken);
       return fallbackSession;
     }
+  },
+
+  async facebookAuth(params?: {
+    accessToken?: string;
+    email?: string;
+    name?: string;
+    facebookId?: string;
+  }): Promise<AuthSession> {
+    const res = await request<AuthSession>("/auth/facebook", {
+      method: "POST",
+      body: JSON.stringify(params || {}),
+    });
+    tokenStorage.set(res.accessToken);
+    if (res.refreshToken) tokenStorage.setRefreshToken(res.refreshToken);
+    return res;
   },
 };
 
@@ -370,6 +417,17 @@ export const messagingApi = {
       method: "POST",
     });
   },
+
+  async transcribeAudio(audioBase64: string, mimeType = "audio/webm"): Promise<{ text: string }> {
+    return request<{ text: string }>("/transcribe", {
+      method: "POST",
+      body: JSON.stringify({ audioBase64, mimeType }),
+    });
+  },
+};
+
+export const transcribeApi = {
+  transcribeAudio: messagingApi.transcribeAudio,
 };
 
 // ── Notifications Service ────────────────────────────────────────────────────

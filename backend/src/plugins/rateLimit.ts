@@ -4,8 +4,12 @@ import type { FastifyPluginAsync } from 'fastify';
 
 export const rateLimitPlugin: FastifyPluginAsync = async (fastify) => {
   await fastify.register(rateLimit, {
-    max: 100, // 100 requests per minute by default
+    max: 500, // 500 requests per minute
     timeWindow: '1 minute',
+    allowList: (req) => {
+      // Allow internal ping / health / options
+      return req.method === 'OPTIONS' || req.url === '/api/v1/health' || req.url === '/health';
+    },
     errorResponseBuilder: (req, context) => ({
       success: false,
       error: {

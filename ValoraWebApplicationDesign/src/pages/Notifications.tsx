@@ -38,15 +38,25 @@ export default function Notifications({ navigate }: NotificationsProps) {
 
   useEffect(() => {
     let active = true;
-    notificationsApi.getAll().then((data) => {
-      if (active) {
-        setNotifs(data || []);
-        setLoading(false);
-      }
-    }).catch(() => {
-      if (active) setLoading(false);
-    });
-    return () => { active = false; };
+    notificationsApi
+      .getAll()
+      .then((data) => {
+        if (active) {
+          const list = data || [];
+          setNotifs(list);
+          setLoading(false);
+          const unreadCount = list.filter((n) => !n.read).length;
+          window.dispatchEvent(
+            new CustomEvent("valora:notifications-updated", { detail: unreadCount })
+          );
+        }
+      })
+      .catch(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const notifications = notifs;
@@ -55,6 +65,7 @@ export default function Notifications({ navigate }: NotificationsProps) {
 
   const handleMarkAll = async () => {
     setNotifs((prev) => prev.map((n) => ({ ...n, read: true })));
+    window.dispatchEvent(new CustomEvent("valora:notifications-updated", { detail: 0 }));
     await notificationsApi.markRead().catch(() => {});
   };
 

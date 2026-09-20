@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import type { UserProfile } from "../types";
 import { discoveryApi, profilesApi } from "../services/api";
 import { firebaseService } from "../services/firebase";
-import UndiscoveredAvatar from "../components/UndiscoveredAvatar";
+import UndiscoveredAvatar, { DEFAULT_DP_URL } from "../components/UndiscoveredAvatar";
 
 const lifestyleFilters = ["All", "alcohol-free", "vegan", "zero-waste", "mindfulness practice", "outdoor lifestyle", "plant-based"];
 
@@ -40,6 +40,11 @@ function ProfileCard({ profile, onClick }: { profile: UserProfile; onClick: () =
             alt={`${profile.name}, ${profile.age}`}
             className="w-full h-full object-cover"
             loading="lazy"
+            onError={(e) => {
+              if (e.currentTarget.src !== DEFAULT_DP_URL) {
+                e.currentTarget.src = DEFAULT_DP_URL;
+              }
+            }}
           />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-sand/80 via-cream to-ivory">
@@ -147,9 +152,27 @@ function ProfileDetail({ profile, onClose, onConnect, currentUser }: { profile: 
         {/* Photo header */}
         <div className="relative h-72 bg-cream overflow-hidden">
           {profile.photos && profile.photos[0] ? (
-            <img src={profile.photos[0]} alt={`${profile.name}`} className="w-full h-full object-cover" />
+            <img
+              src={profile.photos[0]}
+              alt={`${profile.name}`}
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                if (e.currentTarget.src !== DEFAULT_DP_URL) {
+                  e.currentTarget.src = DEFAULT_DP_URL;
+                }
+              }}
+            />
           ) : profile.photo ? (
-            <img src={profile.photo} alt={`${profile.name}`} className="w-full h-full object-cover" />
+            <img
+              src={profile.photo}
+              alt={`${profile.name}`}
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                if (e.currentTarget.src !== DEFAULT_DP_URL) {
+                  e.currentTarget.src = DEFAULT_DP_URL;
+                }
+              }}
+            />
           ) : (
             <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-sand/80 via-cream to-ivory">
               <UndiscoveredAvatar photo="" name={profile.name} size="xl" />

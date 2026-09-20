@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import type { NavigateFn, UserProfile } from "../types";
 import { discoveryApi } from "../services/api";
-import UndiscoveredAvatar from "../components/UndiscoveredAvatar";
+import UndiscoveredAvatar, { DEFAULT_DP_URL } from "../components/UndiscoveredAvatar";
 
 interface MatchesProps {
   navigate: NavigateFn;
@@ -111,6 +111,11 @@ export default function Matches({ navigate }: MatchesProps) {
                     alt={`${match.name}, ${match.age}`}
                     className="w-full h-full object-cover"
                     loading="lazy"
+                    onError={(e) => {
+                      if (e.currentTarget.src !== DEFAULT_DP_URL) {
+                        e.currentTarget.src = DEFAULT_DP_URL;
+                      }
+                    }}
                   />
                 ) : (
                   <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-sand/80 via-cream to-ivory">

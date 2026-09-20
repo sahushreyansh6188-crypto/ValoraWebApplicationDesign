@@ -17,6 +17,9 @@ export interface FrontendUserProfile {
   lastActive?: string;
 }
 
+export const DEFAULT_AVATAR_URL =
+  'https://upload.wikimedia.org/wikipedia/commons/8/83/Default-Icon.jpg?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=original';
+
 export function serializeProfile(
   profile: any,
   compatibilityScore = 80
@@ -24,7 +27,7 @@ export function serializeProfile(
   const photos = (profile.photos || []).map((p: any) => p.photoUrl || p);
   const primaryPhoto =
     profile.avatarUrl ||
-    (photos.length > 0 ? photos[0] : '');
+    (photos.length > 0 ? photos[0] : DEFAULT_AVATAR_URL);
 
   const attributes = profile.attributes || [];
   const lifestyle = attributes

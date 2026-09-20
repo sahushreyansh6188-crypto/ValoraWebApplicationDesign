@@ -25,7 +25,8 @@ export default function PhotoImporter({
   const hasPhoto = Boolean(
     currentPhoto &&
     currentPhoto.trim().length > 0 &&
-    !currentPhoto.includes("undiscovered-placeholder")
+    !currentPhoto.includes("undiscovered-placeholder") &&
+    !currentPhoto.includes("Default-Icon.jpg")
   );
 
   const handleFileProcess = async (file: File) => {
@@ -215,7 +216,7 @@ export default function PhotoImporter({
               onClick={() => onPhotoUploaded("")}
               className="text-xs text-danger/80 hover:text-danger hover:underline cursor-pointer"
             >
-              Set Undiscovered
+              Use default DP
             </button>
           </div>
         </div>

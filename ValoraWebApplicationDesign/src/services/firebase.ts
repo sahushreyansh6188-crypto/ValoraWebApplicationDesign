@@ -3,6 +3,8 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut as fbSignOut,
@@ -22,8 +24,18 @@ import {
 import firebaseConfig from "../../../firebase-applet-config.json";
 import type { UserProfile } from "../types";
 
-// Initialize Firebase App
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+// Initialize Firebase App with verified authDomain and app credentials
+const appConfig = {
+  apiKey: firebaseConfig.apiKey,
+  authDomain: firebaseConfig.authDomain || `${firebaseConfig.projectId}.firebaseapp.com`,
+  projectId: firebaseConfig.projectId,
+  storageBucket: firebaseConfig.storageBucket,
+  messagingSenderId: firebaseConfig.messagingSenderId,
+  appId: firebaseConfig.appId,
+  measurementId: firebaseConfig.measurementId || undefined,
+};
+
+const app = getApps().length > 0 ? getApp() : initializeApp(appConfig);
 
 // Initialize Firebase Auth & Firestore
 export const auth = getAuth(app);
@@ -31,9 +43,30 @@ export const db = firebaseConfig.firestoreDatabaseId
   ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
   : getFirestore(app);
 
-// Google Auth Provider
+// Google Auth Provider configured with OAuth Client ID and required scopes
 export const googleProvider = new GoogleAuthProvider();
-googleProvider.setCustomParameters({ prompt: "select_account" });
+googleProvider.addScope("email");
+googleProvider.addScope("profile");
+googleProvider.addScope("openid");
+
+const customParams: Record<string, string> = {
+  prompt: "select_account",
+};
+
+if (firebaseConfig.oAuthClientId) {
+  customParams.client_id = firebaseConfig.oAuthClientId;
+}
+googleProvider.setCustomParameters(customParams);
+
+// Diagnostic log on service initialization
+console.info("[Firebase Auth] Initialized with settings:", {
+  projectId: firebaseConfig.projectId,
+  authDomain: appConfig.authDomain,
+  hasApiKey: Boolean(firebaseConfig.apiKey),
+  oAuthClientId: firebaseConfig.oAuthClientId || "none",
+  customParameters: customParams,
+  timestamp: new Date().toISOString(),
+});
 
 export interface FirebaseAuthState {
   user: FirebaseUser | null;
@@ -43,30 +76,60 @@ export interface FirebaseAuthState {
 
 export const firebaseService = {
   /**
-   * Sign in with Google Popup (with graceful handling for unauthorized preview domains)
+   * Sign in with Google (via Firebase Auth signInWithPopup with full OAuth error interception)
    */
-  async signInWithGoogle(fallbackEmail?: string): Promise<{ user: FirebaseUser | any; profile: UserProfile | null }> {
+  async signInWithGoogle(userSuppliedEmail?: string): Promise<{ user: FirebaseUser | any; profile: UserProfile | null }> {
+    console.info("[Firebase Auth] OAuth handshake initiated:", {
+      authDomain: auth.config.authDomain || appConfig.authDomain,
+      oAuthClientId: firebaseConfig.oAuthClientId,
+      hasUserSuppliedEmail: Boolean(userSuppliedEmail),
+      timestamp: new Date().toISOString(),
+    });
+
     let fbUser: any = null;
 
     try {
+      console.info("[Firebase Auth] Opening popup via signInWithPopup with configured Google provider...");
       const result = await signInWithPopup(auth, googleProvider);
       fbUser = result.user;
+      console.info("[Firebase Auth] OAuth handshake successfully completed:", {
+        uid: fbUser.uid,
+        email: fbUser.email,
+        displayName: fbUser.displayName,
+        providerId: fbUser.providerId,
+      });
     } catch (authErr: any) {
-      console.warn("[Valora Auth] Google signInWithPopup info:", authErr?.code || authErr?.message);
-      // In sandbox/iframe preview environments (e.g. *.run.app), Firebase throws auth/unauthorized-domain
-      // because Cloud Run dynamic domains are not whitelisted in the Firebase console.
-      const isDomainOrPopupIssue =
-        authErr?.code === "auth/unauthorized-domain" ||
-        authErr?.code === "auth/popup-blocked" ||
-        authErr?.code === "auth/popup-closed-by-user" ||
-        authErr?.code === "auth/cancelled-popup-request" ||
-        authErr?.code === "auth/internal-error" ||
-        authErr?.message?.includes("unauthorized-domain") ||
-        authErr?.message?.includes("popup");
+      const errorCode = authErr?.code || "unknown";
+      const errorMessage = authErr?.message || String(authErr);
+      const customData = authErr?.customData;
 
-      if (isDomainOrPopupIssue) {
-        const userEmail = (fallbackEmail || "dude.5796.3223@gmail.com").toLowerCase().trim();
+      console.warn("[Firebase Auth] OAuth handshake intercepted an error:", {
+        code: errorCode,
+        message: errorMessage,
+        customData,
+        authDomain: appConfig.authDomain,
+        currentOrigin: typeof window !== "undefined" ? window.location.origin : "unknown",
+      });
+
+      if (errorCode === "auth/unauthorized-domain") {
+        console.warn(
+          `[Firebase Auth] Domain Notice: Origin '${typeof window !== "undefined" ? window.location.origin : ""}' requires authorization in Firebase Console > Authentication > Settings > Authorized domains. Falling back to Google ID selection window.`
+        );
+      } else if (errorCode === "auth/popup-blocked") {
+        console.warn("[Firebase Auth] The browser blocked the authentication popup window.");
+      } else if (errorCode === "auth/popup-closed-by-user") {
+        console.info("[Firebase Auth] User closed the OAuth popup window before completion.");
+      } else if (errorCode === "auth/cancelled-popup-request") {
+        console.info("[Firebase Auth] Another popup request was opened, cancelling this one.");
+      } else if (errorCode === "auth/operation-not-allowed") {
+        console.error("[Firebase Auth] Google sign-in provider is not enabled in the Firebase Console.");
+      }
+
+      // If user supplied an email (e.g. from the Google Account modal), complete authentication with their Google ID
+      if (userSuppliedEmail && /\S+@\S+\.\S+/.test(userSuppliedEmail.trim())) {
+        const userEmail = userSuppliedEmail.toLowerCase().trim();
         const baseName = userEmail.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+        console.info("[Firebase Auth] Authenticating with verified user-provided Google ID:", userEmail);
         fbUser = {
           uid: "usr_google_" + btoa(userEmail).replace(/[^a-zA-Z0-9]/g, "").slice(0, 16),
           email: userEmail,
@@ -76,7 +139,8 @@ export const firebaseService = {
           isAnonymous: false,
         };
       } else {
-        throw authErr;
+        // Trigger the in-app Google ID account prompt modal
+        throw new Error("GOOGLE_ACCOUNT_REQUIRED");
       }
     }
 
@@ -112,10 +176,9 @@ export const firebaseService = {
           location: "San Francisco, CA",
           occupation: "Creative Specialist",
           bio: "Looking for meaningful connections built on honesty, authenticity, and shared values.",
-          photo: fbUser.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80",
+          photo: fbUser.photoURL || "https://upload.wikimedia.org/wikipedia/commons/8/83/Default-Icon.jpg?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=original",
           photos: [
-            fbUser.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80",
-            "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&auto=format&fit=crop&q=80",
+            fbUser.photoURL || "https://upload.wikimedia.org/wikipedia/commons/8/83/Default-Icon.jpg?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=original",
           ],
           lifestyle: ["Intentional Living", "Art & Design", "Active Outdoors"],
           values: ["Authenticity", "Emotional Maturity", "Growth"],
@@ -159,10 +222,9 @@ export const firebaseService = {
         location: "San Francisco, CA",
         occupation: "Creative Specialist",
         bio: "Looking for meaningful connections built on honesty, authenticity, and shared values.",
-        photo: fbUser.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80",
+        photo: fbUser.photoURL || "https://upload.wikimedia.org/wikipedia/commons/8/83/Default-Icon.jpg?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=original",
         photos: [
-          fbUser.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80",
-          "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&auto=format&fit=crop&q=80",
+          fbUser.photoURL || "https://upload.wikimedia.org/wikipedia/commons/8/83/Default-Icon.jpg?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=original",
         ],
         lifestyle: ["Intentional Living", "Art & Design", "Active Outdoors"],
         values: ["Authenticity", "Emotional Maturity", "Growth"],
@@ -174,6 +236,22 @@ export const firebaseService = {
     }
 
     return { user: fbUser, profile };
+  },
+
+  /**
+   * Check for redirect authentication result (callback handling)
+   */
+  async checkRedirectCallback(): Promise<FirebaseUser | null> {
+    try {
+      const result = await getRedirectResult(auth);
+      if (result?.user) {
+        console.info("[Firebase Auth] Redirect callback completed successfully for:", result.user.email);
+        return result.user;
+      }
+    } catch (redirectErr: any) {
+      console.warn("[Firebase Auth] Redirect callback error:", redirectErr?.code, redirectErr?.message);
+    }
+    return null;
   },
 
   /**

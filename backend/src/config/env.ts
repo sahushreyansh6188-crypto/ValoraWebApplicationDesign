@@ -30,6 +30,10 @@ const envSchema = z.object({
   STRIPE_ANNUAL_PRICE_ID: z.string().default('price_mock_annual_99'),
   MEDIA_CDN_URL: z.string().default('https://images.unsplash.com'),
   EMAIL_FROM: z.string().default('VALORA <no-reply@valora.example.com>'),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  FACEBOOK_APP_ID: z.string().optional(),
+  FACEBOOK_APP_SECRET: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

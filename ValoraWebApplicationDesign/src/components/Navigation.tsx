@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import type { Screen, NavigateFn, UserProfile } from "../types";
-import { profilesApi } from "../services/api";
+import { profilesApi, messagingApi, notificationsApi, connectChatWebSocket } from "../services/api";
 import ValoraLogo, { ValoraIcon } from "./ValoraLogo";
 import UndiscoveredAvatar from "./UndiscoveredAvatar";
 
@@ -58,17 +58,31 @@ const navItems = [
 export default function Navigation({
   screen,
   navigate,
-  unreadMessages = 2,
-  unreadNotifications = 3,
+  unreadMessages = 0,
+  unreadNotifications = 0,
   userProfile,
 }: NavProps) {
   const [profile, setProfile] = useState<UserProfile | null>(userProfile || null);
+  const [liveUnreadMessages, setLiveUnreadMessages] = useState<number>(unreadMessages);
+  const [liveUnreadNotifications, setLiveUnreadNotifications] = useState<number>(unreadNotifications);
 
   useEffect(() => {
     if (userProfile) {
       setProfile(userProfile);
     }
   }, [userProfile]);
+
+  useEffect(() => {
+    if (typeof unreadMessages === "number") {
+      setLiveUnreadMessages(unreadMessages);
+    }
+  }, [unreadMessages]);
+
+  useEffect(() => {
+    if (typeof unreadNotifications === "number") {
+      setLiveUnreadNotifications(unreadNotifications);
+    }
+  }, [unreadNotifications]);
 
   useEffect(() => {
     let active = true;
@@ -83,6 +97,36 @@ export default function Navigation({
       })
       .catch(() => {});
 
+    // Fetch real unread counts
+    const fetchCounts = () => {
+      messagingApi
+        .getConversations()
+        .then((convs) => {
+          if (!active) return;
+          const count = (convs || []).reduce(
+            (acc, c) => acc + (c.unreadCount || (c.isNew ? 1 : 0)),
+            0
+          );
+          setLiveUnreadMessages(count);
+        })
+        .catch(() => {
+          if (active) setLiveUnreadMessages(0);
+        });
+
+      notificationsApi
+        .getAll()
+        .then((notifs) => {
+          if (!active) return;
+          const count = (notifs || []).filter((n) => !n.read).length;
+          setLiveUnreadNotifications(count);
+        })
+        .catch(() => {
+          if (active) setLiveUnreadNotifications(0);
+        });
+    };
+
+    fetchCounts();
+
     // Listen for cross-page profile updates (e.g. from MyProfile or Onboarding)
     const handleProfileUpdate = (e: Event) => {
       const customEvent = e as CustomEvent<Partial<UserProfile>>;
@@ -91,16 +135,54 @@ export default function Navigation({
       }
     };
 
+    const handleMessagesUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<number>;
+      if (typeof customEvent.detail === "number") {
+        setLiveUnreadMessages(customEvent.detail);
+      } else {
+        fetchCounts();
+      }
+    };
+
+    const handleNotificationsUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<number>;
+      if (typeof customEvent.detail === "number") {
+        setLiveUnreadNotifications(customEvent.detail);
+      } else {
+        fetchCounts();
+      }
+    };
+
     window.addEventListener("valora:profile-updated", handleProfileUpdate);
+    window.addEventListener("valora:messages-updated", handleMessagesUpdate);
+    window.addEventListener("valora:notifications-updated", handleNotificationsUpdate);
+
+    // Also connect to WebSocket to listen for incoming chat messages in real time
+    const disconnectWs = connectChatWebSocket((event) => {
+      if (event.type === "message:received") {
+        fetchCounts();
+      }
+    });
+
     return () => {
       active = false;
       window.removeEventListener("valora:profile-updated", handleProfileUpdate);
+      window.removeEventListener("valora:messages-updated", handleMessagesUpdate);
+      window.removeEventListener("valora:notifications-updated", handleNotificationsUpdate);
+      disconnectWs();
     };
   }, []);
 
+  // When visiting alerts screen, clear unread notifications indicator
+  useEffect(() => {
+    if (screen === "notifications") {
+      setLiveUnreadNotifications(0);
+    }
+  }, [screen]);
+
   const getBadge = (id: Screen) => {
-    if (id === "messages") return unreadMessages;
-    if (id === "notifications") return unreadNotifications;
+    if (id === "messages") return liveUnreadMessages;
+    if (id === "notifications") return liveUnreadNotifications;
     return 0;
   };
 

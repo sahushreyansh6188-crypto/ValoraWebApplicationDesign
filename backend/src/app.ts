@@ -19,6 +19,7 @@ import settingsRoutes from './modules/settings/settings.routes.js';
 import safetyRoutes from './modules/safety/safety.routes.js';
 import adminRoutes from './modules/admin/admin.routes.js';
 import billingRoutes from './modules/billing/billing.routes.js';
+import transcribeRoutes from './modules/transcribe/transcribe.routes.js';
 
 import { AppError } from './utils/errors.js';
 import { sendError, sendSuccess } from './utils/response.js';
@@ -93,6 +94,7 @@ export function buildApp(): FastifyInstance {
       api.register(safetyRoutes, { prefix: '/safety' });
       api.register(adminRoutes, { prefix: '/admin' });
       api.register(billingRoutes, { prefix: '/billing' });
+      api.register(transcribeRoutes);
     },
     { prefix: env.API_PREFIX }
   );
@@ -124,6 +126,16 @@ export function buildApp(): FastifyInstance {
         message: v.message || 'Invalid field',
       }));
       return sendError(reply, AppError.badRequest('Validation failed', details));
+    }
+
+    // Fastify Rate Limit Error
+    if (anyError.statusCode === 429 || anyError.code === 'FST_ERR_RATE_LIMIT_EXCEEDED') {
+      return sendError(reply, AppError.rateLimited());
+    }
+
+    // Client HTTP Errors
+    if (anyError.statusCode && anyError.statusCode >= 400 && anyError.statusCode < 500) {
+      return sendError(reply, new AppError(anyError.statusCode, anyError.code || 'BAD_REQUEST', anyError.message || 'Client Error'));
     }
 
     // Log internal unhandled error
