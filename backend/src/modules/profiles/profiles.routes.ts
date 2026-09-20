@@ -85,14 +85,61 @@ export const profilesRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/onboarding', { preHandler: [authenticate] }, handleGetMyProfile);
 
   const handleUpdateMyProfile = async (request: any, reply: any) => {
-    fastify.log.info({ userId: request.user?.sub, method: request.method, url: request.url }, '[ProfilesRoute] Updating profile');
+    const rawBody = request.body;
+    // Format sanitized preview of body for console log to preserve readability if large base64 photo is present
+    const bodyLogSnapshot =
+      rawBody && typeof rawBody === 'object'
+        ? JSON.stringify(
+            rawBody,
+            (key, val) =>
+              (key === 'photo' || key === 'data') && typeof val === 'string' && val.length > 80
+                ? `${val.substring(0, 80)}... [${val.length} chars]`
+                : val,
+            2
+          )
+        : JSON.stringify(rawBody);
+
+    fastify.log.info(
+      {
+        methodSignature: `${request.method} ${request.url}`,
+        routePath: request.routeOptions?.url,
+        httpMethod: request.method,
+        userId: request.user?.sub,
+        headers: {
+          contentType: request.headers['content-type'],
+          origin: request.headers['origin'],
+          userAgent: request.headers['user-agent'],
+        },
+        requestBody: rawBody,
+      },
+      `[DEBUG - ProfilesRoute Update] Received ${request.method} ${request.url}`
+    );
+
+    console.log(
+      `\n========== [PROFILES UPDATE DEBUG LOG] ==========\n` +
+      `Method Signature: ${request.method} ${request.url}\n` +
+      `Route Path:       ${request.routeOptions?.url}\n` +
+      `User ID:          ${request.user?.sub || 'unauthenticated'}\n` +
+      `Content-Type:     ${request.headers['content-type']}\n` +
+      `Request Body:     ${bodyLogSnapshot}\n` +
+      `==================================================\n`
+    );
+
     const body = updateProfileSchema.parse(request.body);
     const updated = await profilesService.updateMyProfile(request.user!.sub, body);
     return sendSuccess(reply, updated);
   };
 
   const handleSubmitOnboarding = async (request: any, reply: any) => {
-    fastify.log.info({ userId: request.user?.sub, method: request.method, url: request.url }, '[ProfilesRoute] Submitting onboarding profile');
+    fastify.log.info(
+      {
+        methodSignature: `${request.method} ${request.url}`,
+        routePath: request.routeOptions?.url,
+        userId: request.user?.sub,
+        requestBody: request.body,
+      },
+      `[DEBUG - ProfilesRoute Onboarding] Submitting onboarding profile via ${request.method} ${request.url}`
+    );
     const body = onboardingSchema.parse(request.body);
     const profile = await profilesService.submitOnboarding(request.user!.sub, body);
     return sendSuccess(reply, profile, 200);
@@ -100,7 +147,15 @@ export const profilesRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Smart handler for update or registration: dispatches to submitOnboarding if full onboarding payload is present, otherwise updates profile
   const handleUpdateOrCreate = async (request: any, reply: any) => {
-    fastify.log.info({ userId: request.user?.sub, method: request.method, url: request.url }, '[ProfilesRoute] Update/Create profile handler invoked');
+    fastify.log.info(
+      {
+        methodSignature: `${request.method} ${request.url}`,
+        routePath: request.routeOptions?.url,
+        userId: request.user?.sub,
+        requestBody: request.body,
+      },
+      `[DEBUG - ProfilesRoute UpdateOrCreate] ${request.method} ${request.url} invoked`
+    );
     const body = request.body || {};
     if (body.lifestyle && body.values && body.communicationStyle) {
       return handleSubmitOnboarding(request, reply);

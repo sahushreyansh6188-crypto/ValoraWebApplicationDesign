@@ -5,8 +5,14 @@ const envApiUrl =
   (import.meta.env.VITE_API_BASE_URL as string) ||
   "";
 
-// If VITE_API_URL points to the suspended external Render service or is blank, use relative local backend proxy
-const rawApiUrl = envApiUrl.includes("valora-backend.onrender.com") ? "" : envApiUrl;
+// In this full-stack environment, external Render or localhost:5001 URLs must use the local proxy
+const isExternalRender =
+  envApiUrl.includes("onrender.com") ||
+  envApiUrl.includes("render.com") ||
+  envApiUrl.includes("localhost:5001") ||
+  envApiUrl.includes("127.0.0.1:5001");
+
+const rawApiUrl = isExternalRender ? "" : envApiUrl;
 
 const API_BASE = rawApiUrl
   ? (rawApiUrl.endsWith("/api/v1") ? rawApiUrl : `${rawApiUrl.replace(/\/$/, "")}/api/v1`)
@@ -130,7 +136,16 @@ async function request<T>(
         );
       }
       const errJson = await res.json().catch(() => null);
-      let errMsg = errJson?.error?.message || `HTTP ${res.status} ${res.statusText}`;
+      let errMsg = errJson?.error?.message;
+      if (!errMsg) {
+        if (res.status === 405) {
+          errMsg = "Request method not allowed. Please check server configuration.";
+        } else if (res.status === 401) {
+          errMsg = "Invalid email or password.";
+        } else {
+          errMsg = `HTTP ${res.status}${res.statusText ? ` ${res.statusText}` : ""}`.trim();
+        }
+      }
       if (errJson?.error?.details && Array.isArray(errJson.error.details) && errJson.error.details.length > 0) {
         const firstDetail = errJson.error.details[0];
         if (typeof firstDetail === "object" && firstDetail?.message) {

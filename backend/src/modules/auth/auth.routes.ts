@@ -61,7 +61,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   /**
    * Phase 3 & 4: Sign up with strong password validation and immutable fields
    */
-  fastify.post('/signup', async (request, reply) => {
+  const handleSignup = async (request: any, reply: any) => {
     const body = signupSchema.parse(request.body);
     const result = await authService.signup(body);
     const tokens = issueTokens(result.user, reply);
@@ -74,21 +74,30 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       },
       201
     );
-  });
+  };
+  fastify.post('/signup', handleSignup);
+  fastify.put('/signup', handleSignup);
+  fastify.patch('/signup', handleSignup);
 
   /**
    * Phase 6: Step 1 Login - verifies password and dispatches secure Email OTP
    */
-  fastify.post('/login', async (request, reply) => {
+  const handleLogin = async (request: any, reply: any) => {
     const body = loginSchema.parse(request.body);
     const result = await authService.login(body);
     return sendSuccess(reply, result);
+  };
+  fastify.post('/login', handleLogin);
+  fastify.put('/login', handleLogin);
+  fastify.patch('/login', handleLogin);
+  fastify.get('/login', async (_request, reply) => {
+    return sendSuccess(reply, { status: 'ready', message: 'Login endpoint active' });
   });
 
   /**
    * Phase 6: Step 2 Login - verifies Email OTP and establishes authenticated session
    */
-  fastify.post('/login-otp', async (request, reply) => {
+  const handleLoginOtp = async (request: any, reply: any) => {
     const { email, code } = z
       .object({
         email: z.string().email('Enter a valid email address'),
@@ -103,19 +112,26 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       ...tokens,
       user: result.user,
     });
-  });
+  };
+  fastify.post('/login-otp', handleLoginOtp);
+  fastify.put('/login-otp', handleLoginOtp);
+  fastify.patch('/login-otp', handleLoginOtp);
 
   /**
    * Logout - Clears refresh cookie and ends session
    */
-  fastify.post('/logout', async (request, reply) => {
+  const handleLogout = async (request: any, reply: any) => {
     reply.clearCookie('valora_refresh_token', {
       path: '/api/v1/auth/refresh',
       secure: env.NODE_ENV === 'production',
       sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
     });
     return sendSuccess(reply, { message: 'Logged out successfully' });
-  });
+  };
+  fastify.post('/logout', handleLogout);
+  fastify.put('/logout', handleLogout);
+  fastify.patch('/logout', handleLogout);
+  fastify.get('/logout', handleLogout);
 
   /**
    * Session refresh token rotation
@@ -245,7 +261,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   /**
    * General OTP Dispatch
    */
-  fastify.post('/otp/send', async (request, reply) => {
+  const handleOtpSend = async (request: any, reply: any) => {
     const { email, purpose } = z
       .object({
         email: z.string().email('Enter a valid email address'),
@@ -255,12 +271,15 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
 
     const result = await authService.sendOtp(email, purpose);
     return sendSuccess(reply, result);
-  });
+  };
+  fastify.post('/otp/send', handleOtpSend);
+  fastify.put('/otp/send', handleOtpSend);
+  fastify.patch('/otp/send', handleOtpSend);
 
   /**
    * General OTP Verification
    */
-  fastify.post('/otp/verify', async (request, reply) => {
+  const handleOtpVerify = async (request: any, reply: any) => {
     const body = z
       .object({
         email: z.string().email('Enter a valid email address'),
@@ -278,7 +297,10 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       ...tokens,
       user: result.user,
     });
-  });
+  };
+  fastify.post('/otp/verify', handleOtpVerify);
+  fastify.put('/otp/verify', handleOtpVerify);
+  fastify.patch('/otp/verify', handleOtpVerify);
 
   /**
    * Phase 14: Sensitive action re-authentication
