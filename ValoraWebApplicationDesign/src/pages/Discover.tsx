@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
-import type { UserProfile } from "../types";
+import type { UserProfile, ActivityFeedItem } from "../types";
 import { discoveryApi, profilesApi } from "../services/api";
 import { firebaseService } from "../services/firebase";
 import UndiscoveredAvatar, { DEFAULT_DP_URL } from "../components/UndiscoveredAvatar";
+import ActivityFeed from "../components/ActivityFeed";
 
 const lifestyleFilters = ["All", "alcohol-free", "vegan", "zero-waste", "mindfulness practice", "outdoor lifestyle", "plant-based"];
 
@@ -313,10 +314,12 @@ function ProfileDetail({ profile, onClose, onConnect, currentUser }: { profile: 
 
 export default function Discover() {
   const [activeFilter, setActiveFilter] = useState("All");
+  const [viewTab, setViewTab] = useState<"profiles" | "activity">("profiles");
   const [selectedProfile, setSelectedProfile] = useState<UserProfile | null>(null);
   const [showSuccess, setShowSuccess] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [profileList, setProfileList] = useState<UserProfile[]>([]);
+  const [pulseItem, setPulseItem] = useState<ActivityFeedItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -361,6 +364,18 @@ export default function Discover() {
   }, []);
 
   useEffect(() => {
+    // Fetch latest community pulse for header ticker
+    discoveryApi
+      .getActivityFeed()
+      .then((items) => {
+        if (items && items.length > 0) {
+          setPulseItem(items[0]);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     fetchFeed(false);
 
     // Real-time polling: Refresh feed every 10 seconds to discover newly signed-up users instantly
@@ -389,11 +404,37 @@ export default function Discover() {
     setTimeout(() => setShowSuccess(null), 3000);
   };
 
+  const handleInspectProfile = async (profileId: string) => {
+    const existing = profileList.find((p) => p.id === profileId);
+    if (existing) {
+      setSelectedProfile(existing);
+      return;
+    }
+    try {
+      const fetched = (await profilesApi.getById(profileId)) || (await firebaseService.getProfile(profileId));
+      if (fetched) {
+        setSelectedProfile(fetched);
+      }
+    } catch (err) {
+      console.warn("Could not load profile:", err);
+    }
+  };
+
+  const handleDirectConnect = async (targetId: string, targetName: string) => {
+    setShowSuccess(targetName);
+    try {
+      await discoveryApi.reachOut(targetId);
+    } catch (err) {
+      console.warn("Direct connect error:", err);
+    }
+    setTimeout(() => setShowSuccess(null), 3000);
+  };
+
   return (
     <div className="md:ml-60 min-h-screen bg-ivory">
       {/* Page header */}
       <div className="sticky top-0 z-30 bg-ivory/95 backdrop-blur-sm border-b border-mist px-6 py-4">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
             <h1 className="font-display text-2xl text-charcoal">Discover</h1>
             <span className="flex items-center gap-1.5 text-[11px] font-medium text-brand bg-brand-light/60 px-2.5 py-0.5 rounded-full border border-brand/20">
@@ -401,7 +442,8 @@ export default function Discover() {
               Live
             </span>
           </div>
-          <div className="flex items-center gap-3">
+
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={() => fetchFeed(true)}
               disabled={refreshing}
@@ -423,93 +465,184 @@ export default function Discover() {
               </svg>
               <span>{refreshing ? "Updating..." : "Refresh"}</span>
             </button>
-            <span className="text-xs text-stone">{filtered.length} {filtered.length === 1 ? "profile" : "profiles"} available</span>
+            <span className="text-xs text-stone hidden sm:inline">{filtered.length} {filtered.length === 1 ? "profile" : "profiles"}</span>
           </div>
         </div>
-        {/* Filter bar */}
-        <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none" role="toolbar" aria-label="Filter by lifestyle">
-          {lifestyleFilters.map((f) => (
+
+        {/* View Toggle Tabs: Explore Profiles vs Activity Feed */}
+        <div className="flex items-center justify-between gap-3 border-b border-mist/60 pb-3 mb-3">
+          <div className="inline-flex bg-cream/70 p-1 rounded-full border border-mist/80" role="tablist" aria-label="Discovery views">
             <button
-              key={f}
-              onClick={() => setActiveFilter(f)}
-              aria-pressed={activeFilter === f}
-              className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                activeFilter === f
-                  ? "bg-brand text-ivory"
-                  : "bg-white border border-mist text-flint hover:bg-cream"
+              role="tab"
+              aria-selected={viewTab === "profiles"}
+              onClick={() => setViewTab("profiles")}
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                viewTab === "profiles"
+                  ? "bg-white text-charcoal shadow-xs"
+                  : "text-stone hover:text-charcoal"
               }`}
             >
-              {f}
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <rect x="3" y="3" width="7" height="7" />
+                <rect x="14" y="3" width="7" height="7" />
+                <rect x="14" y="14" width="7" height="7" />
+                <rect x="3" y="14" width="7" height="7" />
+              </svg>
+              <span>Explore Profiles</span>
+              <span className="text-[11px] bg-mist px-1.5 py-0.2 rounded-full font-normal">
+                {filtered.length}
+              </span>
             </button>
-          ))}
+
+            <button
+              role="tab"
+              aria-selected={viewTab === "activity"}
+              onClick={() => setViewTab("activity")}
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                viewTab === "activity"
+                  ? "bg-brand text-ivory shadow-xs"
+                  : "text-stone hover:text-charcoal"
+              }`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-brand animate-ping" />
+              <span>Activity Feed</span>
+              <span className="text-[10px] bg-brand-light text-brand px-1.5 py-0.2 rounded-full font-semibold">
+                Live
+              </span>
+            </button>
+          </div>
         </div>
+
+        {/* Filter bar (shown when viewing profiles) */}
+        {viewTab === "profiles" && (
+          <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none" role="toolbar" aria-label="Filter by lifestyle">
+            {lifestyleFilters.map((f) => (
+              <button
+                key={f}
+                onClick={() => setActiveFilter(f)}
+                aria-pressed={activeFilter === f}
+                className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                  activeFilter === f
+                    ? "bg-brand text-ivory"
+                    : "bg-white border border-mist text-flint hover:bg-cream"
+                }`}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="p-6 pb-24 md:pb-6">
-        {loading ? (
-          /* Loading state */
-          <div className="text-center py-20">
-            <div className="w-9 h-9 border-2 border-brand border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-stone text-sm">Loading compatible profiles...</p>
-          </div>
-        ) : error ? (
-          /* Error state */
-          <div className="text-center py-20">
-            <div className="w-16 h-16 bg-cream rounded-full flex items-center justify-center mx-auto mb-5">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#D0614A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="12" y1="8" x2="12" y2="12"/>
-                <line x1="12" y1="16" x2="12.01" y2="16"/>
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold text-charcoal mb-2">Unable to load profiles.</h3>
-            <p className="text-stone text-sm">Please check your connection or try again.</p>
-            <button
-              onClick={() => {
-                setLoading(true);
-                setError(null);
-                discoveryApi.getFeed({ lifestyle: activeFilter }).then((data) => {
-                  setProfileList(data || []);
-                  setLoading(false);
-                }).catch((err) => {
-                  setError((err as Error)?.message || "Unable to load profiles.");
-                  setLoading(false);
-                });
-              }}
-              className="mt-5 inline-block bg-white border border-mist text-brand px-5 py-2 rounded-full text-sm font-medium hover:bg-cream transition-colors"
-            >
-              Retry
-            </button>
-          </div>
-        ) : filtered.length === 0 ? (
-          /* Empty state */
-          <div className="text-center py-20">
-            <div className="w-16 h-16 bg-cream rounded-full flex items-center justify-center mx-auto mb-5">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#8A8A82" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="11" cy="11" r="8"/>
-                <path d="M21 21l-4.35-4.35"/>
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold text-charcoal mb-2">
-              {activeFilter === "All" ? "No eligible profiles currently available." : "No matches for this filter"}
-            </h3>
-            <p className="text-stone text-sm max-w-md mx-auto">
-              {activeFilter === "All"
-                ? "New members appear here as they complete onboarding and publish their profiles. Broaden your discovery preferences in settings or check back soon."
-                : "Try a different lifestyle filter, or broaden your discovery preferences in settings."}
-            </p>
-            {activeFilter !== "All" && (
-              <button onClick={() => setActiveFilter("All")} className="mt-5 text-brand text-sm font-medium hover:underline">
-                Clear filter
-              </button>
-            )}
+        {viewTab === "activity" ? (
+          /* Dedicated Activity Feed View */
+          <div className="max-w-2xl mx-auto">
+            <ActivityFeed
+              onSelectProfile={handleInspectProfile}
+              currentUser={currentUser}
+              onDirectConnect={handleDirectConnect}
+            />
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {filtered.map((p) => (
-              <ProfileCard key={p.id} profile={p} onClick={() => setSelectedProfile(p)} />
-            ))}
-          </div>
+          /* Profiles Grid View with Live Activity Pulse Ticker */
+          <>
+            {pulseItem && (
+              <div
+                onClick={() => setViewTab("activity")}
+                className="mb-5 bg-gradient-to-r from-brand-light/40 via-white to-clay-light/30 hover:bg-brand-light/60 border border-brand/20 rounded-2xl p-3 sm:px-4 sm:py-2.5 flex items-center justify-between gap-3 cursor-pointer shadow-xs transition-all group"
+                role="button"
+                tabIndex={0}
+                title="Click to view live activity feed"
+                onKeyDown={(e) => e.key === "Enter" && setViewTab("activity")}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="w-2 h-2 rounded-full bg-brand animate-ping flex-shrink-0" />
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-brand bg-brand-light px-2 py-0.5 rounded-full border border-brand/20 flex-shrink-0">
+                    Live Pulse
+                  </span>
+                  <p className="text-xs text-charcoal font-medium truncate">
+                    <span className="font-semibold text-brand">{pulseItem.title}</span>
+                    {pulseItem.description && (
+                      <span className="text-stone hidden sm:inline"> — {pulseItem.description}</span>
+                    )}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-brand group-hover:underline font-semibold flex-shrink-0">
+                  <span>View Feed</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M5 12h14M12 5l7 7-7 7" />
+                  </svg>
+                </div>
+              </div>
+            )}
+
+            {loading ? (
+              /* Loading state */
+              <div className="text-center py-20">
+                <div className="w-9 h-9 border-2 border-brand border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                <p className="text-stone text-sm">Loading compatible profiles...</p>
+              </div>
+            ) : error ? (
+              /* Error state */
+              <div className="text-center py-20">
+                <div className="w-16 h-16 bg-cream rounded-full flex items-center justify-center mx-auto mb-5">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#D0614A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-charcoal mb-2">Unable to load profiles.</h3>
+                <p className="text-stone text-sm">Please check your connection or try again.</p>
+                <button
+                  onClick={() => {
+                    setLoading(true);
+                    setError(null);
+                    discoveryApi.getFeed({ lifestyle: activeFilter }).then((data) => {
+                      setProfileList(data || []);
+                      setLoading(false);
+                    }).catch((err) => {
+                      setError((err as Error)?.message || "Unable to load profiles.");
+                      setLoading(false);
+                    });
+                  }}
+                  className="mt-5 inline-block bg-white border border-mist text-brand px-5 py-2 rounded-full text-sm font-medium hover:bg-cream transition-colors"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : filtered.length === 0 ? (
+              /* Empty state */
+              <div className="text-center py-20">
+                <div className="w-16 h-16 bg-cream rounded-full flex items-center justify-center mx-auto mb-5">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#8A8A82" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="M21 21l-4.35-4.35"/>
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-charcoal mb-2">
+                  {activeFilter === "All" ? "No eligible profiles currently available." : "No matches for this filter"}
+                </h3>
+                <p className="text-stone text-sm max-w-md mx-auto">
+                  {activeFilter === "All"
+                    ? "New members appear here as they complete onboarding and publish their profiles. Broaden your discovery preferences in settings or check back soon."
+                    : "Try a different lifestyle filter, or broaden your discovery preferences in settings."}
+                </p>
+                {activeFilter !== "All" && (
+                  <button onClick={() => setActiveFilter("All")} className="mt-5 text-brand text-sm font-medium hover:underline">
+                    Clear filter
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                {filtered.map((p) => (
+                  <ProfileCard key={p.id} profile={p} onClick={() => setSelectedProfile(p)} />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -537,3 +670,4 @@ export default function Discover() {
     </div>
   );
 }
+

@@ -62,6 +62,25 @@
         "read": { "type": "boolean", "description": "Read status" }
       },
       "required": ["conversationId", "senderId", "text", "timestamp"]
+    },
+    "Activity": {
+      "description": "Public community feed actions like new matches, profile updates, and values milestones",
+      "properties": {
+        "id": { "type": "string", "description": "Unique activity ID" },
+        "type": { "type": "string", "description": "Activity type: match, profile_update, value_update, photo_update, prompt_answered" },
+        "actorId": { "type": "string", "description": "User ID who performed the action" },
+        "actorName": { "type": "string", "description": "Display name of actor" },
+        "actorPhoto": { "type": "string", "description": "Avatar photo of actor" },
+        "targetId": { "type": "string", "description": "Optional target user ID (e.g. matched user)" },
+        "targetName": { "type": "string", "description": "Optional target user name" },
+        "targetPhoto": { "type": "string", "description": "Optional target avatar photo" },
+        "title": { "type": "string", "description": "Activity headline" },
+        "description": { "type": "string", "description": "Detailed description or values highlight" },
+        "compatibilityScore": { "type": "number", "description": "Optional compatibility score for matches" },
+        "tags": { "type": "array", "description": "Highlighted tags or values", "items": { "type": "string" } },
+        "timestamp": { "type": "string", "description": "ISO timestamp of activity" }
+      },
+      "required": ["type", "actorName", "title", "timestamp"]
     }
   },
   "firestore": {
@@ -84,6 +103,10 @@
     "/conversations/{conversationId}/messages/{messageId}": {
       "entity": "Message",
       "description": "Messages inside conversation"
+    },
+    "/activities/{activityId}": {
+      "entity": "Activity",
+      "description": "Community actions, new matches, and profile updates stream"
     }
   }
 }

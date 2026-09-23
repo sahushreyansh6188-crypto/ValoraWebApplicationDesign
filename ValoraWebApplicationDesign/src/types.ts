@@ -51,3 +51,32 @@ export interface Notification {
   read: boolean;
   profileId?: string;
 }
+
+export type ActivityType =
+  | 'match'
+  | 'profile_update'
+  | 'values_update'
+  | 'photo_update'
+  | 'prompt_answered'
+  | 'reach_out';
+
+export interface ActivityFeedItem {
+  id: string;
+  type: ActivityType;
+  actorId: string;
+  actorName: string;
+  actorPhoto?: string;
+  actorPronouns?: string;
+  actorLocation?: string;
+  targetId?: string;
+  targetName?: string;
+  targetPhoto?: string;
+  targetLocation?: string;
+  title: string;
+  description?: string;
+  compatibilityScore?: number;
+  tags?: string[];
+  timestamp: string;
+  likesCount?: number;
+  liked?: boolean;
+}

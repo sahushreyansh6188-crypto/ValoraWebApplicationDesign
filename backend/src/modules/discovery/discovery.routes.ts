@@ -37,6 +37,15 @@ export const discoveryRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/', { preHandler: [authenticate] }, handleGetFeed);
   fastify.get('/feed', { preHandler: [authenticate] }, handleGetFeed);
 
+  const handleGetActivities = async (request: any, reply: any) => {
+    const userId = request.user?.sub;
+    const activities = await discoveryService.getActivityFeed(userId);
+    return sendSuccess(reply, activities);
+  };
+
+  fastify.get('/activities', { preHandler: [authenticate] }, handleGetActivities);
+  fastify.get('/feed/activities', { preHandler: [authenticate] }, handleGetActivities);
+
   fastify.post('/pass', { preHandler: [authenticate] }, async (request, reply) => {
     const { targetProfileId } = z
       .object({ targetProfileId: z.string() })

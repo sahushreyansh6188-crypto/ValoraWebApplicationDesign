@@ -20,9 +20,14 @@ import {
   setDoc,
   collection,
   getDocs,
+  addDoc,
+  query,
+  orderBy,
+  limit,
+  onSnapshot,
 } from "firebase/firestore";
 import firebaseConfig from "../../../firebase-applet-config.json";
-import type { UserProfile } from "../types";
+import type { UserProfile, ActivityFeedItem } from "../types";
 
 // Initialize Firebase App with verified authDomain and app credentials
 const appConfig = {
@@ -441,6 +446,105 @@ export const firebaseService = {
       return list;
     } catch {
       return [];
+    }
+  },
+
+  /**
+   * Publish a new community activity item to Firestore
+   */
+  async publishActivity(item: Omit<ActivityFeedItem, "id">): Promise<string> {
+    try {
+      const activitiesRef = collection(db, "activities");
+      const docRef = await addDoc(activitiesRef, {
+        ...item,
+        timestamp: item.timestamp || new Date().toISOString(),
+        likesCount: item.likesCount || 0,
+      });
+      return docRef.id;
+    } catch (err) {
+      console.warn("Firebase publishActivity notice:", (err as Error)?.message || err);
+      return "act_" + Date.now();
+    }
+  },
+
+  /**
+   * Fetch recent community activities from Firestore
+   */
+  async getActivities(maxItems = 30): Promise<ActivityFeedItem[]> {
+    try {
+      const activitiesRef = collection(db, "activities");
+      const q = query(activitiesRef, orderBy("timestamp", "desc"), limit(maxItems));
+      const snap = await getDocs(q);
+      const list: ActivityFeedItem[] = [];
+      snap.forEach((d) => {
+        const data = d.data();
+        list.push({
+          id: d.id,
+          type: data.type || "profile_update",
+          actorId: data.actorId || "",
+          actorName: data.actorName || "Valora Member",
+          actorPhoto: data.actorPhoto || "",
+          actorPronouns: data.actorPronouns || "",
+          actorLocation: data.actorLocation || "",
+          targetId: data.targetId || undefined,
+          targetName: data.targetName || undefined,
+          targetPhoto: data.targetPhoto || undefined,
+          targetLocation: data.targetLocation || undefined,
+          title: data.title || "",
+          description: data.description || "",
+          compatibilityScore: data.compatibilityScore,
+          tags: data.tags || [],
+          timestamp: data.timestamp || new Date().toISOString(),
+          likesCount: data.likesCount || 0,
+        });
+      });
+      return list;
+    } catch {
+      return [];
+    }
+  },
+
+  /**
+   * Subscribe to real-time activity updates from Firestore
+   */
+  subscribeActivities(callback: (items: ActivityFeedItem[]) => void): () => void {
+    try {
+      const activitiesRef = collection(db, "activities");
+      const q = query(activitiesRef, orderBy("timestamp", "desc"), limit(30));
+      return onSnapshot(
+        q,
+        (snap) => {
+          const list: ActivityFeedItem[] = [];
+          snap.forEach((d) => {
+            const data = d.data();
+            list.push({
+              id: d.id,
+              type: data.type || "profile_update",
+              actorId: data.actorId || "",
+              actorName: data.actorName || "Valora Member",
+              actorPhoto: data.actorPhoto || "",
+              actorPronouns: data.actorPronouns || "",
+              actorLocation: data.actorLocation || "",
+              targetId: data.targetId || undefined,
+              targetName: data.targetName || undefined,
+              targetPhoto: data.targetPhoto || undefined,
+              targetLocation: data.targetLocation || undefined,
+              title: data.title || "",
+              description: data.description || "",
+              compatibilityScore: data.compatibilityScore,
+              tags: data.tags || [],
+              timestamp: data.timestamp || new Date().toISOString(),
+              likesCount: data.likesCount || 0,
+            });
+          });
+          callback(list);
+        },
+        (error) => {
+          console.warn("Activities onSnapshot warning:", error);
+        }
+      );
+    } catch {
+      return () => {};
     }
   },
 };

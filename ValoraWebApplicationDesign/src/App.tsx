@@ -17,46 +17,133 @@ import Admin from "./pages/Admin";
 import Notifications from "./pages/Notifications";
 
 export default function App() {
-  const [screen, setScreen] = useState<Screen>("landing");
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return tokenStorage.isAuthenticated();
+  });
+
+  const [screen, setScreenState] = useState<Screen>(() => {
+    try {
+      const hash = window.location.hash.replace(/^#\/?/, "") as Screen;
+      const validScreens: Screen[] = [
+        "landing",
+        "auth",
+        "onboarding",
+        "discover",
+        "matches",
+        "messages",
+        "my-profile",
+        "settings",
+        "admin",
+        "notifications",
+      ];
+      if (hash && validScreens.includes(hash)) {
+        return hash;
+      }
+      const saved = tokenStorage.getScreen() as Screen;
+      const isAuth = tokenStorage.isAuthenticated();
+      if (isAuth) {
+        if (!saved || saved === "landing" || saved === "auth") {
+          return "discover";
+        }
+        return validScreens.includes(saved) ? saved : "discover";
+      }
+      return saved && validScreens.includes(saved) ? saved : "landing";
+    } catch {
+      return "landing";
+    }
+  });
+
   const [authMode, setAuthMode] = useState<AuthMode>("login");
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(null);
+  const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(() => {
+    return tokenStorage.getProfile();
+  });
+
+  const navigate = (s: Screen) => {
+    setScreenState(s);
+    tokenStorage.setScreen(s);
+    try {
+      if (s === "landing") {
+        if (window.location.hash) {
+          window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        }
+      } else {
+        window.location.hash = s;
+      }
+    } catch {}
+  };
 
   useEffect(() => {
-    const token = tokenStorage.get();
-    if (token) {
+    // Keep screen state in sync if browser navigation back/forward is used
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace(/^#\/?/, "") as Screen;
+      const validScreens: Screen[] = [
+        "landing",
+        "auth",
+        "onboarding",
+        "discover",
+        "matches",
+        "messages",
+        "my-profile",
+        "settings",
+        "admin",
+        "notifications",
+      ];
+      if (hash && validScreens.includes(hash)) {
+        setScreenState(hash);
+        tokenStorage.setScreen(hash);
+      }
+    };
+    window.addEventListener("hashchange", handleHashChange);
+
+    // If authenticated, refresh profile in background without logging user out on network failure
+    if (tokenStorage.isAuthenticated()) {
       profilesApi
         .getMe()
         .then((p) => {
           if (p && p.id) {
             setCurrentUserProfile(p);
             setIsAuthenticated(true);
-            setScreen("discover");
+            tokenStorage.setProfile(p);
           }
         })
-        .catch(() => {
-          tokenStorage.clear();
+        .catch((err) => {
+          console.info("[Valora App] Background profile sync bypassed:", (err as Error)?.message);
+          // Retain current session and credentials
         });
     }
 
-    // Also observe Firebase Auth changes
+    // Observe Firebase Auth changes
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
         setIsAuthenticated(true);
+        tokenStorage.setUser({
+          id: fbUser.uid,
+          email: fbUser.email,
+          name: fbUser.displayName,
+          photoURL: fbUser.photoURL,
+        });
         const fbProfile = await firebaseService.getProfile(fbUser.uid);
         if (fbProfile) {
           setCurrentUserProfile(fbProfile);
-          setScreen((s) => (s === "landing" || s === "auth" ? "discover" : s));
+          tokenStorage.setProfile(fbProfile);
+          setScreenState((current) => {
+            if (current === "landing" || current === "auth") {
+              tokenStorage.setScreen("discover");
+              return "discover";
+            }
+            return current;
+          });
         } else {
           fetchProfileAndRefresh();
         }
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      window.removeEventListener("hashchange", handleHashChange);
+      unsubscribe();
+    };
   }, []);
-
-  const navigate = (s: Screen) => setScreen(s);
 
   const fetchProfileAndRefresh = () => {
     profilesApi
@@ -64,6 +151,7 @@ export default function App() {
       .then((p) => {
         if (p && p.id) {
           setCurrentUserProfile(p);
+          tokenStorage.setProfile(p);
           window.dispatchEvent(new CustomEvent("valora:profile-updated", { detail: p }));
         }
       })
@@ -72,6 +160,7 @@ export default function App() {
           const fbProfile = await firebaseService.getProfile(auth.currentUser.uid);
           if (fbProfile) {
             setCurrentUserProfile(fbProfile);
+            tokenStorage.setProfile(fbProfile);
             window.dispatchEvent(new CustomEvent("valora:profile-updated", { detail: fbProfile }));
           }
         }
@@ -81,13 +170,15 @@ export default function App() {
   const handleLogin = () => {
     setIsAuthenticated(true);
     fetchProfileAndRefresh();
-    setScreen("discover");
+    const saved = tokenStorage.getScreen() as Screen;
+    const target = saved && saved !== "landing" && saved !== "auth" ? saved : "discover";
+    navigate(target);
   };
 
   const handleOnboardingComplete = () => {
     setIsAuthenticated(true);
     fetchProfileAndRefresh();
-    setScreen("discover");
+    navigate("discover");
   };
 
   const handleLogout = async () => {
@@ -100,7 +191,7 @@ export default function App() {
     tokenStorage.clear();
     setCurrentUserProfile(null);
     setIsAuthenticated(false);
-    setScreen("landing");
+    navigate("landing");
   };
 
   // ── Unauthenticated ──────────────────────────────────────────────────────
@@ -116,11 +207,7 @@ export default function App() {
             setAuthMode(m);
           }}
           navigate={(s) => {
-            if (s === "onboarding") {
-              setScreen("onboarding");
-            } else {
-              navigate(s);
-            }
+            navigate(s);
           }}
           onLogin={handleLogin}
         />
@@ -129,11 +216,7 @@ export default function App() {
     return (
       <Landing
         navigate={(s) => {
-          if (s === "auth") {
-            navigate("auth");
-          } else {
-            navigate(s);
-          }
+          navigate(s);
         }}
         setAuthMode={setAuthMode}
       />
@@ -146,7 +229,7 @@ export default function App() {
       <Onboarding
         onComplete={() => {
           fetchProfileAndRefresh();
-          setScreen("my-profile");
+          navigate("my-profile");
         }}
       />
     );

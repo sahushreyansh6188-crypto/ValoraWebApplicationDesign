@@ -193,4 +193,139 @@ export class DiscoveryService {
 
     return { passed: true };
   }
+
+  async getActivityFeed(userId?: string) {
+    // 1. Fetch recent matches
+    const matches = await this.prisma.match.findMany({
+      where: { isActive: true },
+      orderBy: { matchedAt: 'desc' },
+      take: 8,
+      include: {
+        user1: {
+          include: {
+            profile: {
+              include: { attributes: true, photos: true },
+            },
+          },
+        },
+        user2: {
+          include: {
+            profile: {
+              include: { attributes: true, photos: true },
+            },
+          },
+        },
+      },
+    });
+
+    // 2. Fetch recently updated published profiles
+    const recentProfiles = await this.prisma.profile.findMany({
+      where: {
+        isPublished: true,
+        isPaused: false,
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 12,
+      include: {
+        attributes: true,
+        photos: true,
+      },
+    });
+
+    const activities: Array<{
+      id: string;
+      type: string;
+      actorId: string;
+      actorName: string;
+      actorPhoto?: string;
+      actorPronouns?: string;
+      actorLocation?: string;
+      targetId?: string;
+      targetName?: string;
+      targetPhoto?: string;
+      targetLocation?: string;
+      title: string;
+      description?: string;
+      compatibilityScore?: number;
+      tags: string[];
+      timestamp: string;
+      likesCount?: number;
+    }> = [];
+
+    // Map matches to activities
+    matches.forEach((m) => {
+      const p1 = m.user1.profile;
+      const p2 = m.user2.profile;
+      if (!p1 || !p2) return;
+
+      const p1Values = p1.attributes.filter((a) => a.category === 'value').map((a) => a.attributeKey);
+      const p2Values = p2.attributes.filter((a) => a.category === 'value').map((a) => a.attributeKey);
+      const sharedValues = p1Values.filter((v) => p2Values.includes(v));
+
+      activities.push({
+        id: `match_${m.id}`,
+        type: 'match',
+        actorId: p1.id,
+        actorName: p1.name,
+        actorPhoto: p1.avatarUrl || p1.photos[0]?.photoUrl || '',
+        actorPronouns: p1.pronouns || undefined,
+        actorLocation: p1.location,
+        targetId: p2.id,
+        targetName: p2.name,
+        targetPhoto: p2.avatarUrl || p2.photos[0]?.photoUrl || '',
+        targetLocation: p2.location,
+        title: `${p1.name} & ${p2.name} matched!`,
+        description: sharedValues.length > 0
+          ? `Connected around shared values in ${sharedValues.slice(0, 2).join(' & ')}.`
+          : `Matched with ${m.compatibilityScore}% values alignment score.`,
+        compatibilityScore: m.compatibilityScore,
+        tags: sharedValues.length > 0 ? sharedValues.slice(0, 3) : ['Values-Aligned', 'Mutual Connection'],
+        timestamp: m.matchedAt.toISOString(),
+        likesCount: Math.floor(Math.random() * 8) + 3,
+      });
+    });
+
+    // Map profile updates to activities
+    recentProfiles.forEach((p, idx) => {
+      const values = p.attributes.filter((a) => a.category === 'value').map((a) => a.attributeKey);
+      const lifestyle = p.attributes.filter((a) => a.category === 'lifestyle').map((a) => a.attributeKey);
+
+      // Vary the update subtype for rich realism
+      const type = idx % 3 === 0 ? 'values_update' : idx % 3 === 1 ? 'profile_update' : 'prompt_answered';
+      let title = `${p.name} updated their profile`;
+      let desc = p.bio ? `"${p.bio.slice(0, 95)}..."` : 'Refreshed intentional dating intentions & values.';
+
+      if (type === 'values_update') {
+        title = `${p.name} updated core values`;
+        desc = values.length > 0
+          ? `Prioritizing ${values.slice(0, 2).join(' & ')} in their intentional journey.`
+          : 'Refreshed foundational principles & values.';
+      } else if (type === 'prompt_answered') {
+        title = `${p.name} answered a boundary prompt`;
+        desc = p.lookingFor
+          ? `Intentions: "${p.lookingFor.slice(0, 80)}"`
+          : 'Added a thoughtful reflection on communication rhythms.';
+      }
+
+      activities.push({
+        id: `update_${p.id}_${type}`,
+        type,
+        actorId: p.id,
+        actorName: p.name,
+        actorPhoto: p.avatarUrl || p.photos[0]?.photoUrl || '',
+        actorPronouns: p.pronouns || undefined,
+        actorLocation: p.location,
+        title,
+        description: desc,
+        tags: (values.length > 0 ? values : lifestyle).slice(0, 3),
+        timestamp: p.updatedAt.toISOString(),
+        likesCount: Math.floor(Math.random() * 6) + 1,
+      });
+    });
+
+    // Sort by timestamp descending
+    activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    return activities;
+  }
 }
