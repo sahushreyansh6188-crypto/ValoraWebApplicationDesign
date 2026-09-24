@@ -23,6 +23,7 @@ export default function App() {
 
   const [screen, setScreenState] = useState<Screen>(() => {
     try {
+      const isAuth = tokenStorage.isAuthenticated();
       const hash = window.location.hash.replace(/^#\/?/, "") as Screen;
       const validScreens: Screen[] = [
         "landing",
@@ -36,18 +37,35 @@ export default function App() {
         "admin",
         "notifications",
       ];
-      if (hash && validScreens.includes(hash)) {
+
+      // If user is authenticated, restore their active screen
+      if (isAuth) {
+        if (hash && validScreens.includes(hash) && hash !== "landing" && hash !== "auth") {
+          return hash;
+        }
+        const saved = tokenStorage.getScreen() as Screen;
+        if (saved && validScreens.includes(saved) && saved !== "landing" && saved !== "auth") {
+          return saved;
+        }
+        return "discover";
+      }
+
+      // If user is signed out, only allow public screens ('auth' or 'onboarding')
+      if (hash === "auth" || hash === "onboarding") {
         return hash;
       }
-      const saved = tokenStorage.getScreen() as Screen;
-      const isAuth = tokenStorage.isAuthenticated();
-      if (isAuth) {
-        if (!saved || saved === "landing" || saved === "auth") {
-          return "discover";
-        }
-        return validScreens.includes(saved) ? saved : "discover";
+
+      // If URL hash points to a protected screen like #settings after logout, strip it cleanly
+      if (window.location.hash && window.location.hash !== "#landing") {
+        try {
+          window.location.hash = "";
+          if (window.history.replaceState) {
+            window.history.replaceState(null, "", window.location.pathname + window.location.search);
+          }
+        } catch {}
       }
-      return saved && validScreens.includes(saved) ? saved : "landing";
+
+      return "landing";
     } catch {
       return "landing";
     }
@@ -63,7 +81,8 @@ export default function App() {
     tokenStorage.setScreen(s);
     try {
       if (s === "landing") {
-        if (window.location.hash) {
+        window.location.hash = "";
+        if (window.history.replaceState) {
           window.history.replaceState(null, "", window.location.pathname + window.location.search);
         }
       } else {
@@ -89,8 +108,31 @@ export default function App() {
         "notifications",
       ];
       if (hash && validScreens.includes(hash)) {
-        setScreenState(hash);
-        tokenStorage.setScreen(hash);
+        if (tokenStorage.isAuthenticated()) {
+          if (hash === "landing" || hash === "auth") {
+            setScreenState("discover");
+            tokenStorage.setScreen("discover");
+            window.location.hash = "discover";
+            return;
+          }
+          setScreenState(hash);
+          tokenStorage.setScreen(hash);
+        } else {
+          // If unauthenticated and hash is a protected app screen, force redirect to landing
+          if (hash !== "landing" && hash !== "auth" && hash !== "onboarding") {
+            setScreenState("landing");
+            tokenStorage.setScreen("landing");
+            try {
+              window.location.hash = "";
+              if (window.history.replaceState) {
+                window.history.replaceState(null, "", window.location.pathname + window.location.search);
+              }
+            } catch {}
+            return;
+          }
+          setScreenState(hash);
+          tokenStorage.setScreen(hash);
+        }
       }
     };
     window.addEventListener("hashchange", handleHashChange);
@@ -191,14 +233,20 @@ export default function App() {
     tokenStorage.clear();
     setCurrentUserProfile(null);
     setIsAuthenticated(false);
-    navigate("landing");
+    tokenStorage.setScreen("landing");
+
+    try {
+      window.location.hash = "";
+      if (window.history.replaceState) {
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      }
+    } catch {}
+
+    setScreenState("landing");
   };
 
-  // ── Unauthenticated ──────────────────────────────────────────────────────
+  // ── Screens when user is unauthenticated ──────────────────────────────────
   if (!isAuthenticated) {
-    if (screen === "onboarding") {
-      return <Onboarding onComplete={handleOnboardingComplete} />;
-    }
     if (screen === "auth") {
       return (
         <Auth
@@ -213,24 +261,25 @@ export default function App() {
         />
       );
     }
+
+    if (screen === "onboarding") {
+      return (
+        <Onboarding
+          onComplete={() => {
+            fetchProfileAndRefresh();
+            navigate("my-profile");
+          }}
+        />
+      );
+    }
+
     return (
       <Landing
         navigate={(s) => {
           navigate(s);
         }}
         setAuthMode={setAuthMode}
-      />
-    );
-  }
-
-  // ── Authenticated ────────────────────────────────────────────────────────
-  if (screen === "onboarding") {
-    return (
-      <Onboarding
-        onComplete={() => {
-          fetchProfileAndRefresh();
-          navigate("my-profile");
-        }}
+        onLogin={handleLogin}
       />
     );
   }

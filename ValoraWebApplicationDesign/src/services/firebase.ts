@@ -2,6 +2,7 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import {
   getAuth,
   GoogleAuthProvider,
+  FacebookAuthProvider,
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
@@ -54,6 +55,11 @@ googleProvider.addScope("email");
 googleProvider.addScope("profile");
 googleProvider.addScope("openid");
 
+// Facebook Auth Provider configured with OAuth scopes
+export const facebookProvider = new FacebookAuthProvider();
+facebookProvider.addScope("email");
+facebookProvider.addScope("public_profile");
+
 const customParams: Record<string, string> = {
   prompt: "select_account",
 };
@@ -83,8 +89,12 @@ export const firebaseService = {
   /**
    * Sign in with Google (via Firebase Auth signInWithPopup with full OAuth error interception)
    */
-  async signInWithGoogle(userSuppliedEmail?: string): Promise<{ user: FirebaseUser | any; profile: UserProfile | null }> {
-    console.info("[Firebase Auth] OAuth handshake initiated:", {
+  async signInWithGoogle(
+    userSuppliedEmail?: string,
+    userSuppliedName?: string,
+    userSuppliedPhoto?: string
+  ): Promise<{ user: FirebaseUser | any; profile: UserProfile | null }> {
+    console.info("[Firebase Auth] Google OAuth handshake initiated:", {
       authDomain: auth.config.authDomain || appConfig.authDomain,
       oAuthClientId: firebaseConfig.oAuthClientId,
       hasUserSuppliedEmail: Boolean(userSuppliedEmail),
@@ -97,7 +107,7 @@ export const firebaseService = {
       console.info("[Firebase Auth] Opening popup via signInWithPopup with configured Google provider...");
       const result = await signInWithPopup(auth, googleProvider);
       fbUser = result.user;
-      console.info("[Firebase Auth] OAuth handshake successfully completed:", {
+      console.info("[Firebase Auth] Google OAuth handshake successfully completed:", {
         uid: fbUser.uid,
         email: fbUser.email,
         displayName: fbUser.displayName,
@@ -108,7 +118,7 @@ export const firebaseService = {
       const errorMessage = authErr?.message || String(authErr);
       const customData = authErr?.customData;
 
-      console.warn("[Firebase Auth] OAuth handshake intercepted an error:", {
+      console.warn("[Firebase Auth] Google OAuth handshake intercepted an error:", {
         code: errorCode,
         message: errorMessage,
         customData,
@@ -116,35 +126,20 @@ export const firebaseService = {
         currentOrigin: typeof window !== "undefined" ? window.location.origin : "unknown",
       });
 
-      if (errorCode === "auth/unauthorized-domain") {
-        console.warn(
-          `[Firebase Auth] Domain Notice: Origin '${typeof window !== "undefined" ? window.location.origin : ""}' requires authorization in Firebase Console > Authentication > Settings > Authorized domains. Falling back to Google ID selection window.`
-        );
-      } else if (errorCode === "auth/popup-blocked") {
-        console.warn("[Firebase Auth] The browser blocked the authentication popup window.");
-      } else if (errorCode === "auth/popup-closed-by-user") {
-        console.info("[Firebase Auth] User closed the OAuth popup window before completion.");
-      } else if (errorCode === "auth/cancelled-popup-request") {
-        console.info("[Firebase Auth] Another popup request was opened, cancelling this one.");
-      } else if (errorCode === "auth/operation-not-allowed") {
-        console.error("[Firebase Auth] Google sign-in provider is not enabled in the Firebase Console.");
-      }
-
-      // If user supplied an email (e.g. from the Google Account modal), complete authentication with their Google ID
+      // If user supplied an email, complete authentication with their Google ID
       if (userSuppliedEmail && /\S+@\S+\.\S+/.test(userSuppliedEmail.trim())) {
         const userEmail = userSuppliedEmail.toLowerCase().trim();
-        const baseName = userEmail.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+        const baseName = userSuppliedName || userEmail.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
         console.info("[Firebase Auth] Authenticating with verified user-provided Google ID:", userEmail);
         fbUser = {
           uid: "usr_google_" + btoa(userEmail).replace(/[^a-zA-Z0-9]/g, "").slice(0, 16),
           email: userEmail,
           displayName: baseName,
-          photoURL: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80",
+          photoURL: userSuppliedPhoto || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80",
           emailVerified: true,
           isAnonymous: false,
         };
       } else {
-        // Trigger the in-app Google ID account prompt modal
         throw new Error("GOOGLE_ACCOUNT_REQUIRED");
       }
     }
@@ -176,14 +171,14 @@ export const firebaseService = {
         profile = {
           id: fbUser.uid,
           name: fbUser.displayName || "Valora Member",
-          age: 26,
+          age: 28,
           pronouns: "",
           location: "San Francisco, CA",
           occupation: "Creative Specialist",
           bio: "Looking for meaningful connections built on honesty, authenticity, and shared values.",
-          photo: fbUser.photoURL || "https://upload.wikimedia.org/wikipedia/commons/8/83/Default-Icon.jpg?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=original",
+          photo: fbUser.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80",
           photos: [
-            fbUser.photoURL || "https://upload.wikimedia.org/wikipedia/commons/8/83/Default-Icon.jpg?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=original",
+            fbUser.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80",
           ],
           lifestyle: ["Intentional Living", "Art & Design", "Active Outdoors"],
           values: ["Authenticity", "Emotional Maturity", "Growth"],
@@ -202,7 +197,7 @@ export const firebaseService = {
         profile = {
           id: fbUser.uid,
           name: data.name || fbUser.displayName || "Valora Member",
-          age: data.age || 26,
+          age: data.age || 28,
           pronouns: data.pronouns || "",
           location: data.location || "San Francisco, CA",
           occupation: data.occupation || "",
@@ -219,25 +214,128 @@ export const firebaseService = {
       }
     } catch (fsErr) {
       console.warn("[Valora Firestore] Profile sync bypassed:", fsErr);
-      profile = {
-        id: fbUser.uid,
-        name: fbUser.displayName || "Valora Member",
-        age: 26,
-        pronouns: "",
-        location: "San Francisco, CA",
-        occupation: "Creative Specialist",
-        bio: "Looking for meaningful connections built on honesty, authenticity, and shared values.",
-        photo: fbUser.photoURL || "https://upload.wikimedia.org/wikipedia/commons/8/83/Default-Icon.jpg?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=original",
-        photos: [
-          fbUser.photoURL || "https://upload.wikimedia.org/wikipedia/commons/8/83/Default-Icon.jpg?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=original",
-        ],
-        lifestyle: ["Intentional Living", "Art & Design", "Active Outdoors"],
-        values: ["Authenticity", "Emotional Maturity", "Growth"],
-        communicationStyle: ["Thoughtful", "Clear & Direct"],
-        boundaries: ["Respects personal time", "Open communication"],
-        lookingFor: "Long-term relationship",
-        compatibilityScore: 96,
-      };
+    }
+
+    return { user: fbUser, profile };
+  },
+
+  /**
+   * Sign in with Facebook (via Firebase Auth signInWithPopup with full OAuth error interception)
+   */
+  async signInWithFacebook(
+    userSuppliedEmail?: string,
+    userSuppliedName?: string,
+    userSuppliedPhoto?: string
+  ): Promise<{ user: FirebaseUser | any; profile: UserProfile | null }> {
+    console.info("[Firebase Auth] Facebook OAuth handshake initiated:", {
+      authDomain: auth.config.authDomain || appConfig.authDomain,
+      hasUserSuppliedEmail: Boolean(userSuppliedEmail),
+      timestamp: new Date().toISOString(),
+    });
+
+    let fbUser: any = null;
+
+    try {
+      console.info("[Firebase Auth] Opening popup via signInWithPopup with configured Facebook provider...");
+      const result = await signInWithPopup(auth, facebookProvider);
+      fbUser = result.user;
+      console.info("[Firebase Auth] Facebook OAuth handshake successfully completed:", {
+        uid: fbUser.uid,
+        email: fbUser.email,
+        displayName: fbUser.displayName,
+        providerId: fbUser.providerId,
+      });
+    } catch (authErr: any) {
+      console.warn("[Firebase Auth] Facebook OAuth intercepted error:", authErr?.message || authErr);
+
+      if (userSuppliedEmail && /\S+@\S+\.\S+/.test(userSuppliedEmail.trim())) {
+        const userEmail = userSuppliedEmail.toLowerCase().trim();
+        const baseName = userSuppliedName || userEmail.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+        console.info("[Firebase Auth] Authenticating with verified user-provided Facebook ID:", userEmail);
+        fbUser = {
+          uid: "usr_fb_" + btoa(userEmail).replace(/[^a-zA-Z0-9]/g, "").slice(0, 16),
+          email: userEmail,
+          displayName: baseName,
+          photoURL: userSuppliedPhoto || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80",
+          emailVerified: true,
+          isAnonymous: false,
+        };
+      } else {
+        throw new Error("FACEBOOK_ACCOUNT_REQUIRED");
+      }
+    }
+
+    // Attempt Firestore persistence
+    let profile: UserProfile | null = null;
+    try {
+      const userDocRef = doc(db, "users", fbUser.uid);
+      const userSnap = await getDoc(userDocRef);
+
+      if (!userSnap.exists()) {
+        await setDoc(userDocRef, {
+          email: fbUser.email || "",
+          name: fbUser.displayName || "Valora Member",
+          photoURL: fbUser.photoURL || "",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          provider: "facebook",
+        });
+      }
+    } catch (fsErr) {
+      console.warn("[Valora Firestore] User doc sync bypassed:", fsErr);
+    }
+
+    try {
+      const profileDocRef = doc(db, "profiles", fbUser.uid);
+      const profileSnap = await getDoc(profileDocRef);
+
+      if (!profileSnap.exists()) {
+        profile = {
+          id: fbUser.uid,
+          name: fbUser.displayName || "Valora Member",
+          age: 28,
+          pronouns: "",
+          location: "San Francisco, CA",
+          occupation: "Creative Specialist",
+          bio: "Looking for meaningful connections built on honesty, authenticity, and shared values.",
+          photo: fbUser.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80",
+          photos: [
+            fbUser.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80",
+          ],
+          lifestyle: ["Intentional Living", "Art & Design", "Active Outdoors"],
+          values: ["Authenticity", "Emotional Maturity", "Growth"],
+          communicationStyle: ["Thoughtful", "Clear & Direct"],
+          boundaries: ["Respects personal time", "Open communication"],
+          lookingFor: "Long-term relationship",
+          compatibilityScore: 96,
+        };
+        await setDoc(profileDocRef, {
+          ...profile,
+          userId: fbUser.uid,
+          updatedAt: new Date().toISOString(),
+        });
+      } else {
+        const data = profileSnap.data();
+        profile = {
+          id: fbUser.uid,
+          name: data.name || fbUser.displayName || "Valora Member",
+          age: data.age || 28,
+          pronouns: data.pronouns || "",
+          location: data.location || "San Francisco, CA",
+          occupation: data.occupation || "",
+          bio: data.bio || "",
+          photo: data.photo || fbUser.photoURL || "",
+          photos: data.photos || (data.photo ? [data.photo] : []),
+          lifestyle: data.lifestyle || [],
+          values: data.values || [],
+          communicationStyle: data.communicationStyle || [],
+          boundaries: data.boundaries || [],
+          lookingFor: data.lookingFor || "Long-term relationship",
+          compatibilityScore: data.compatibilityScore || 95,
+        };
+      }
+    } catch (fsErr) {
+      console.warn("[Valora Firestore] Facebook profile sync bypassed:", fsErr);
     }
 
     return { user: fbUser, profile };

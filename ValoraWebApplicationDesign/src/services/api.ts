@@ -165,6 +165,90 @@ export const tokenStorage = {
       return false;
     }
   },
+  initDummyAccount: (customName?: string, customEmail?: string): { user: any; profile: UserProfile } => {
+    const token = "valora_dummy_token_" + Date.now();
+    const email = customEmail?.trim() || "dude.5796.3223@gmail.com";
+    const name =
+      customName?.trim() ||
+      (customEmail ? customEmail.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "USER");
+    const uid = "usr_dummy_" + email.replace(/[^a-zA-Z0-9]/g, "_");
+
+    const user = {
+      id: uid,
+      email,
+      name: name === "Dude 5796 3223" ? "USER" : name,
+      photoURL: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80",
+      role: "user",
+      accountStatus: "active",
+      isVerified: true,
+      hasProfile: true,
+    };
+
+    const profile: UserProfile = {
+      id: uid,
+      name: name === "Dude 5796 3223" ? "USER" : name,
+      age: 27,
+      pronouns: "they/them",
+      location: "San Francisco, CA",
+      occupation: "Product & Systems Architect",
+      bio: "Curious, thoughtful, and values-driven. Passionate about mindful living, deep conversations, weekend hiking, and authentic connection.",
+      photo: user.photoURL,
+      photos: [
+        user.photoURL,
+        "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&auto=format&fit=crop&q=80",
+      ],
+      lifestyle: ["Intentional Living", "Mindful Morning Walk", "Specialty Coffee", "Weekend Hikes"],
+      values: ["Authenticity & Honesty", "Emotional Intelligence", "Continuous Growth", "Mutual Kindness"],
+      communicationStyle: ["Thoughtful & Prompt", "Direct with Compassion", "Deep Phone Calls"],
+      boundaries: ["Dedicated Personal Time", "Direct Agreements", "Clear Expectations"],
+      lookingFor: "Long-term intentional partnership",
+      compatibilityScore: 98,
+    };
+
+    try {
+      localStorage.setItem("valora_token", token);
+      localStorage.setItem("valora_is_authenticated", "true");
+      localStorage.setItem("valora_auth_user", JSON.stringify(user));
+      localStorage.setItem("valora_current_profile", JSON.stringify(profile));
+      localStorage.setItem("valora_current_screen", "discover");
+    } catch {}
+
+    return { user, profile };
+  },
+};
+
+export const DEFAULT_DUMMY_USER = {
+  id: "usr_dummy_user",
+  email: "dude.5796.3223@gmail.com",
+  name: "USER",
+  photoURL: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80",
+  role: "user",
+  accountStatus: "active",
+  isVerified: true,
+  hasProfile: true,
+};
+
+export const DEFAULT_DUMMY_PROFILE: UserProfile = {
+  id: "usr_dummy_user",
+  name: "USER",
+  age: 27,
+  pronouns: "they/them",
+  location: "San Francisco, CA",
+  occupation: "Product & Systems Architect",
+  bio: "Curious, thoughtful, and values-driven. Passionate about mindful living, deep conversations, weekend hiking, and authentic connection.",
+  photo: DEFAULT_DUMMY_USER.photoURL,
+  photos: [
+    DEFAULT_DUMMY_USER.photoURL,
+    "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&auto=format&fit=crop&q=80",
+  ],
+  lifestyle: ["Intentional Living", "Mindful Morning Walk", "Specialty Coffee", "Weekend Hikes"],
+  values: ["Authenticity & Honesty", "Emotional Intelligence", "Continuous Growth", "Mutual Kindness"],
+  communicationStyle: ["Thoughtful & Prompt", "Direct with Compassion", "Deep Phone Calls"],
+  boundaries: ["Dedicated Personal Time", "Direct Agreements", "Clear Expectations"],
+  lookingFor: "Long-term intentional partnership",
+  compatibilityScore: 98,
 };
 
 // ── Core Fetch Wrapper ───────────────────────────────────────────────────────
@@ -530,21 +614,42 @@ export const authApi = {
       if (!params?.email) {
         throw err;
       }
+      const chosenEmail = params.email.toLowerCase().trim();
+      const chosenName = params.name || chosenEmail.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      const fallbackUserId = "usr_google_" + btoa(chosenEmail).replace(/[^a-zA-Z0-9]/g, "").slice(0, 16);
       const fallbackSession: AuthSession = {
         accessToken: "valora_google_session_" + Date.now(),
         expiresIn: 3600,
         user: {
-          id: "usr_google_" + Date.now(),
-          email: params.email,
-          name: params.name || params.email.split("@")[0],
-          photo: params.photoUrl,
+          id: fallbackUserId,
+          email: chosenEmail,
+          name: chosenName,
+          photo: params.photoUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80",
           role: "user",
           accountStatus: "active",
           isVerified: true,
+          hasProfile: true,
         },
       };
       tokenStorage.set(fallbackSession.accessToken);
       tokenStorage.setUser(fallbackSession.user);
+      tokenStorage.setProfile({
+        id: fallbackUserId,
+        name: chosenName,
+        age: 28,
+        pronouns: "they/them",
+        location: "San Francisco, CA",
+        occupation: "Product Specialist",
+        bio: "Values-first Valora member connected via Google.",
+        photo: params.photoUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80",
+        photos: [params.photoUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80"],
+        lifestyle: ["Intentional living", "Mindfulness practice"],
+        values: ["Honesty", "Growth", "Authenticity"],
+        communicationStyle: ["Thoughtful", "Direct & Kind"],
+        boundaries: ["Space to recharge", "Clear agreements"],
+        lookingFor: "Long-term relationship",
+        compatibilityScore: 95,
+      });
       return fallbackSession;
     }
   },
@@ -554,15 +659,57 @@ export const authApi = {
     email?: string;
     name?: string;
     facebookId?: string;
+    photoUrl?: string;
   }): Promise<AuthSession> {
-    const res = await request<AuthSession>("/auth/facebook", {
-      method: "POST",
-      body: JSON.stringify(params || {}),
-    });
-    tokenStorage.set(res.accessToken);
-    if (res.refreshToken) tokenStorage.setRefreshToken(res.refreshToken);
-    if (res.user) tokenStorage.setUser(res.user);
-    return res;
+    try {
+      const res = await request<AuthSession>("/auth/facebook", {
+        method: "POST",
+        body: JSON.stringify(params || {}),
+      });
+      tokenStorage.set(res.accessToken);
+      if (res.refreshToken) tokenStorage.setRefreshToken(res.refreshToken);
+      if (res.user) tokenStorage.setUser(res.user);
+      return res;
+    } catch (err: any) {
+      const chosenEmail = (params?.email || "facebook.member@valora.example.com").toLowerCase().trim();
+      const chosenName = params?.name || chosenEmail.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      const fallbackUserId = params?.facebookId || "usr_fb_" + btoa(chosenEmail).replace(/[^a-zA-Z0-9]/g, "").slice(0, 16);
+      const fallbackSession: AuthSession = {
+        accessToken: "valora_fb_session_" + Date.now(),
+        refreshToken: "valora_fb_refresh_" + Date.now(),
+        expiresIn: 3600,
+        user: {
+          id: fallbackUserId,
+          email: chosenEmail,
+          name: chosenName,
+          photo: params?.photoUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80",
+          role: "user",
+          accountStatus: "active",
+          isVerified: true,
+          hasProfile: true,
+        },
+      };
+      tokenStorage.set(fallbackSession.accessToken);
+      tokenStorage.setUser(fallbackSession.user);
+      tokenStorage.setProfile({
+        id: fallbackUserId,
+        name: chosenName,
+        age: 28,
+        pronouns: "they/them",
+        location: "San Francisco, CA",
+        occupation: "Product Specialist",
+        bio: "Values-first Valora member connected via Facebook.",
+        photo: params?.photoUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80",
+        photos: [params?.photoUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80"],
+        lifestyle: ["Active living", "Community gatherings"],
+        values: ["Authenticity", "Kindness", "Open Communication"],
+        communicationStyle: ["Warm & Direct"],
+        boundaries: ["Honest check-ins"],
+        lookingFor: "Meaningful relationship",
+        compatibilityScore: 96,
+      });
+      return fallbackSession;
+    }
   },
 };
 

@@ -6,6 +6,7 @@ import heroBanner from "@/imports/Gemini_Generated_Image_23i34623i34623i3.png";
 interface LandingProps {
   navigate: NavigateFn;
   setAuthMode: (mode: AuthMode) => void;
+  onLogin?: () => void;
 }
 
 const values = [
@@ -99,7 +100,7 @@ const pricingTiers = [
   },
 ];
 
-export default function Landing({ navigate, setAuthMode }: LandingProps) {
+export default function Landing({ navigate, setAuthMode, onLogin }: LandingProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const goToSignup = () => {
@@ -128,13 +129,13 @@ export default function Landing({ navigate, setAuthMode }: LandingProps) {
           <div className="flex items-center gap-2">
             <button
               onClick={goToLogin}
-              className="hidden md:block text-sm font-medium text-flint hover:text-charcoal transition-colors px-4 py-2"
+              className="hidden md:block text-sm font-medium text-flint hover:text-charcoal transition-colors px-4 py-2 cursor-pointer"
             >
               Sign in
             </button>
             <button
               onClick={goToSignup}
-              className="hidden md:inline-flex bg-brand text-ivory text-sm font-medium px-5 py-2 rounded-full hover:bg-brand-hover transition-colors"
+              className="hidden md:inline-flex bg-brand text-ivory text-sm font-medium px-5 py-2 rounded-full hover:bg-brand-hover transition-colors cursor-pointer"
             >
               Get started
             </button>
@@ -284,11 +285,11 @@ export default function Landing({ navigate, setAuthMode }: LandingProps) {
                 </p>
 
                 {/* CTAs */}
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-6">
-                  {/* Primary — full-width on mobile, auto on larger */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 sm:gap-6">
+                  {/* Primary */}
                   <button
                     onClick={goToSignup}
-                    className="bg-ivory text-charcoal text-sm font-medium tracking-wide px-7 py-3.5 rounded-sm hover:bg-cream transition-colors text-center"
+                    className="bg-ivory text-charcoal text-sm font-medium tracking-wide px-7 py-3.5 rounded-sm hover:bg-cream transition-colors text-center cursor-pointer shadow-xs"
                   >
                     Find your alignment
                   </button>
@@ -298,7 +299,7 @@ export default function Landing({ navigate, setAuthMode }: LandingProps) {
                     onClick={() =>
                       document.getElementById("how")?.scrollIntoView({ behavior: "smooth" })
                     }
-                    className="hero-cta-ghost flex items-center justify-center sm:justify-start gap-2 text-ivory/70 text-sm hover:text-ivory transition-colors py-1"
+                    className="hero-cta-ghost flex items-center justify-center sm:justify-start gap-2 text-ivory/70 text-sm hover:text-ivory transition-colors py-1 cursor-pointer"
                   >
                     Explore how it works
                     <svg
@@ -326,17 +327,33 @@ export default function Landing({ navigate, setAuthMode }: LandingProps) {
             </div>
           </div>
 
-          {/* Scroll-down cue — very subtle */}
+          {/* Scroll-down cue — subtle sparkle star + vertical scroll indicator */}
           <div
-            className="absolute bottom-6 right-8 hidden md:flex flex-col items-center gap-1.5 opacity-30"
+            className="absolute bottom-8 right-8 hidden md:flex items-center gap-3.5 opacity-30 select-none pointer-events-none"
             aria-hidden="true"
           >
-            <span className="text-[9px] text-ivory tracking-[0.2em] uppercase rotate-90 origin-center" style={{ writingMode: "vertical-rl" }}>
-              Scroll
-            </span>
-            <svg width="1" height="32" viewBox="0 0 1 32" fill="none">
-              <line x1="0.5" y1="0" x2="0.5" y2="32" stroke="white" strokeWidth="0.75"/>
+            {/* 4-point sparkle star */}
+            <svg
+              width="28"
+              height="28"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              className="text-ivory/60"
+            >
+              <path d="M12 0L14.4 9.6L24 12L14.4 14.4L12 24L9.6 14.4L0 12L9.6 9.6L12 0Z" />
             </svg>
+
+            <div className="flex flex-col items-center gap-1.5">
+              <span
+                className="text-[9px] text-ivory tracking-[0.25em] uppercase rotate-180"
+                style={{ writingMode: "vertical-rl" }}
+              >
+                Scroll
+              </span>
+              <svg width="1" height="32" viewBox="0 0 1 32" fill="none">
+                <line x1="0.5" y1="0" x2="0.5" y2="32" stroke="white" strokeWidth="0.75" />
+              </svg>
+            </div>
           </div>
         </section>
 
